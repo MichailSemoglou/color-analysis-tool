@@ -1,18 +1,18 @@
 # Image Color Analysis Tool
-
 A powerful Python tool for analyzing colors in images, providing detailed information about color distributions, harmonies, and various color space conversions. Perfect for designers, artists, and developers working with color analysis and manipulation.
 
 ## Features
-
 - **Comprehensive Color Analysis**: Extract and analyze colors from images
 - **Multiple Color Spaces**: Support for RGB, HEX, and CMYK color formats
 - **Color Harmony**: Calculate complementary, analogous, triadic, and tetradic color harmonies
-- **Batch Processing**: Analyze multiple images in a directory
+- **Color Sorting Options**: Sort colors by frequency, hue, saturation, or brightness
+- **Dominant Color Detection**: Automatically identify the most prominent color
+- **Batch Processing**: Analyze multiple images recursively in directories
 - **Detailed Reports**: Generate comprehensive analysis reports for each image
 - **Format Support**: Works with PNG, JPG, TIFF, WebP, and PSD files
+- **Progress Tracking**: Visual progress bars for processing status
 
 ## Installation
-
 1. Clone the repository:
 ```bash
 git clone https://github.com/MichailSemoglou/color-analysis-tool.git
@@ -31,9 +31,7 @@ pip install -r requirements.txt
 ```
 
 ## Usage
-
 ### Basic Usage
-
 Analyze a single image:
 ```bash
 python color_analysis.py path/to/image.jpg output/directory
@@ -49,11 +47,18 @@ Enable verbose logging:
 python color_analysis.py path/to/image.jpg output/directory -v
 ```
 
-### Example Output
+Sort colors by different criteria:
+```bash
+python color_analysis.py path/to/image.jpg output/directory -s hue
+python color_analysis.py path/to/image.jpg output/directory -s saturation
+python color_analysis.py path/to/image.jpg output/directory -s brightness
+```
 
+### Example Output
 The tool generates a detailed analysis file for each image with the following information:
 - Image metadata (dimensions, format)
-- Color frequency analysis
+- Dominant color information
+- Color frequency analysis with sorting options
 - RGB, HEX, and CMYK values for each significant color
 - Color harmonies for each major color
 
@@ -62,6 +67,7 @@ Example output structure:
 Image Analysis for example.jpg
 Dimensions: 1920x1080
 Format: JPEG
+Dominant Color: RGB(255, 255, 255)
 
 Colors (sorted by frequency):
   RGB: (255, 255, 255), HEX: #FFFFFF, CMYK: (0, 0, 0, 0), Frequency: 35.2%
@@ -72,26 +78,23 @@ Colors (sorted by frequency):
 ```
 
 ## API Usage
-
 You can also use the tool as a library in your Python projects:
-
 ```python
 from color_analysis import ImageAnalyzer
 
 analyzer = ImageAnalyzer()
 
-# Analyze a single image
-image_info = analyzer.analyze_image('path/to/image.jpg')
+# Analyze a single image with custom sorting
+image_info = analyzer.analyze_image('path/to/image.jpg', sort_by='hue')
 
 # Save the analysis
 analyzer.save_analysis('output/directory', image_info)
 
-# Process multiple images
-analyzer.batch_process('input/directory', 'output/directory')
+# Process multiple images recursively
+analyzer.batch_process('input/directory', 'output/directory', sort_by='frequency')
 ```
 
 ## Requirements
-
 - Python 3.7 or higher
 - Pillow >= 9.0.0
 - tqdm >= 4.65.0
@@ -100,7 +103,6 @@ analyzer.batch_process('input/directory', 'output/directory')
 See `requirements.txt` for detailed version information.
 
 ## Contributing
-
 Contributions are welcome! Please feel free to submit a Pull Request. For major changes, please open an issue first to discuss what you would like to change.
 
 1. Fork the repository
@@ -110,7 +112,6 @@ Contributions are welcome! Please feel free to submit a Pull Request. For major 
 5. Open a Pull Request
 
 ### Development Setup
-
 1. Clone your fork:
 ```bash
 git clone https://github.com/MichailSemoglou/color-analysis-tool.git
@@ -130,11 +131,9 @@ python -m pytest tests/
 ```
 
 ## License
-
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
 ## Acknowledgments
-
 - [Pillow](https://python-pillow.org/) for image processing capabilities
 - [colormath](https://python-colormath.readthedocs.io/) for color space conversions
 - [tqdm](https://github.com/tqdm/tqdm) for progress bar functionality
