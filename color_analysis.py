@@ -1,17 +1,19 @@
 #!/usr/bin/env python3
 """
-Color Analysis Tool
-===================
+Enhanced Color Analysis Tool
+===========================
 
 A comprehensive tool for analyzing colors in images, providing detailed information about
 color distributions, harmonies, and various color space conversions (RGB, HEX, CMYK).
 
 Features:
 - Single image and batch processing capabilities
-- Color frequency analysis
+- Color frequency analysis with multiple sorting options
+- Dominant color detection
 - Color harmony calculations (complementary, analogous, triadic, tetradic)
 - Multiple color space conversions
 - Support for various image formats (PNG, JPG, TIFF, WebP, PSD)
+- Recursive directory scanning for batch processing
 
 Requirements:
 - Python 3.7+
@@ -20,10 +22,12 @@ Requirements:
 - colormath
 
 Usage:
-    python color_analysis.py <input_path> <output_path>
+    python color_analysis.py [-h] [-v] [-s {frequency,hue,saturation,brightness}] input output
 
-    input_path: Path to an image file or directory containing images
-    output_path: Directory where analysis results will be saved
+    input: Path to an image file or directory containing images
+    output: Directory where analysis results will be saved
+    -s, --sort: Sorting method for colors (default: frequency)
+    -v, --verbose: Enable verbose logging
 """
 
 import os
@@ -32,6 +36,7 @@ from typing import Dict, List, Tuple, Optional, Union
 from dataclasses import dataclass
 import logging
 from pathlib import Path
+import argparse
 
 from PIL import Image
 from collections import Counter
@@ -69,6 +74,7 @@ class ImageInfo:
     dimensions: Tuple[int, int]
     format: str
     colors: List[ColorInfo]
+    dominant_color: Optional[RGB] = None
 
 class ColorConverter:
     """Utility class for color space conversions."""
@@ -164,12 +170,13 @@ class ImageAnalyzer:
         self.converter = ColorConverter()
         self.harmony = ColorHarmony()
 
-    def analyze_image(self, file_path: Union[str, Path]) -> Optional[ImageInfo]:
+    def analyze_image(self, file_path: Union[str, Path], sort_by: str = "frequency") -> Optional[ImageInfo]:
         """
         Analyze colors in an image file.
         
         Args:
             file_path: Path to the image file
+            sort_by: Sorting criterion for colors (frequency, hue, saturation, brightness)
             
         Returns:
             ImageInfo object containing analysis results or None if analysis fails
@@ -183,16 +190,42 @@ class ImageAnalyzer:
             color_counts = Counter(pixels)
             sorted_colors = color_counts.most_common()
 
+            # Apply additional sorting if requested
+            if sort_by != "frequency":
+                colors_with_counts = [(color, count) for color, count in sorted_colors]
+                if sort_by == "hue":
+                    sorted_colors = sorted(
+                        colors_with_counts,
+                        key=lambda item: colorsys.rgb_to_hsv(item[0][0]/255, item[0][1]/255, item[0][2]/255)[0]
+                    )
+                elif sort_by == "saturation":
+                    sorted_colors = sorted(
+                        colors_with_counts,
+                        key=lambda item: colorsys.rgb_to_hsv(item[0][0]/255, item[0][1]/255, item[0][2]/255)[1]
+                    )
+                elif sort_by == "brightness":
+                    sorted_colors = sorted(
+                        colors_with_counts,
+                        key=lambda item: colorsys.rgb_to_hsv(item[0][0]/255, item[0][1]/255, item[0][2]/255)[2]
+                    )
+
             image_info = ImageInfo(
                 filename=file_path.name,
                 dimensions=image.size,
                 format=image.format,
-                colors=[]
+                colors=[],
+                dominant_color=None
             )
+
+            # Set dominant color (most frequent non-transparent color)
+            for color, _ in sorted_colors:
+                if color[3] > 0:  # If not fully transparent
+                    image_info.dominant_color = color[:3]
+                    break
 
             for color, count in tqdm(sorted_colors, desc="Analyzing colors"):
                 r, g, b, a = color
-                if a == 0:
+                if a == 0:  # Skip fully transparent colors
                     continue
 
                 rgb = (r, g, b)
@@ -222,38 +255,41 @@ class ImageAnalyzer:
             f.write(f"Image Analysis for {image_info.filename}\n")
             f.write(f"Dimensions: {image_info.dimensions[0]}x{image_info.dimensions[1]}\n")
             f.write(f"Format: {image_info.format}\n")
-            f.write("\nColors (sorted by frequency):\n")
-
-            for color in image_info.colors:
-                f.write(
-                    f"  RGB: {color.rgb}, "
-                    f"HEX: {color.hex}, "
-                    f"CMYK: {color.cmyk}, "
-                    f"Frequency: {color.frequency}%\n"
-                )
-                f.write("    Harmonies:\n")
+            
+            if image_info.dominant_color:
+                f.write(f"Dominant Color: RGB{image_info.dominant_color}\n")
+            
+            f.write("\nColors (by specified sorting):\n")
+            for idx, color in enumerate(image_info.colors, 1):
+                f.write(f"\nColor #{idx}:\n")
+                f.write(f"  RGB: {color.rgb}\n")
+                f.write(f"  HEX: {color.hex}\n")
+                f.write(f"  CMYK: {color.cmyk}\n")
+                f.write(f"  Frequency: {color.frequency}%\n")
+                
+                f.write("\n  Color Harmonies:\n")
                 for harmony_type, harmony_colors in color.harmonies.items():
-                    f.write(f"      {harmony_type.capitalize()}: {harmony_colors}\n")
+                    f.write(f"    {harmony_type.capitalize()}:\n")
+                    for harmony_color in harmony_colors:
+                        f.write(f"      RGB{harmony_color}\n")
 
         logger.info(f"Analysis saved to {output_file}")
 
-    def batch_process(self, input_dir: Union[str, Path], output_dir: Union[str, Path]) -> None:
-        """Process all supported images in a directory."""
+    def batch_process(self, input_dir: Union[str, Path], output_dir: Union[str, Path], sort_by: str = "frequency") -> None:
+        """Process all supported images in a directory recursively."""
         input_dir = Path(input_dir)
         
-        for file_path in input_dir.rglob('*'):
+        for file_path in tqdm(list(input_dir.rglob('*')), desc="Processing files"):
             if file_path.suffix.lower() in self.SUPPORTED_FORMATS:
                 logger.info(f"Processing {file_path}...")
-                image_info = self.analyze_image(file_path)
+                image_info = self.analyze_image(file_path, sort_by=sort_by)
                 if image_info:
                     self.save_analysis(output_dir, image_info)
 
 def main():
     """Main entry point for the script."""
-    import argparse
-
     parser = argparse.ArgumentParser(
-        description="Image Color Analysis Tool",
+        description="Enhanced Image Color Analysis Tool",
         formatter_class=argparse.RawDescriptionHelpFormatter
     )
     parser.add_argument(
@@ -265,6 +301,12 @@ def main():
         "output",
         help="Path to output directory",
         type=Path
+    )
+    parser.add_argument(
+        "-s", "--sort",
+        choices=["frequency", "hue", "saturation", "brightness"],
+        default="frequency",
+        help="Sort colors by specified criterion"
     )
     parser.add_argument(
         "-v", "--verbose",
@@ -279,17 +321,25 @@ def main():
 
     analyzer = ImageAnalyzer()
 
-    if args.input.is_file():
-        logger.info(f"Analyzing single file: {args.input}")
-        image_info = analyzer.analyze_image(args.input)
-        if image_info:
-            analyzer.save_analysis(args.output, image_info)
-    elif args.input.is_dir():
-        logger.info(f"Batch processing directory: {args.input}")
-        analyzer.batch_process(args.input, args.output)
-    else:
-        logger.error("Invalid input path")
+    try:
+        if args.input.is_file():
+            logger.info(f"Analyzing single file: {args.input}")
+            image_info = analyzer.analyze_image(args.input, sort_by=args.sort)
+            if image_info:
+                analyzer.save_analysis(args.output, image_info)
+        elif args.input.is_dir():
+            logger.info(f"Batch processing directory: {args.input}")
+            analyzer.batch_process(args.input, args.output, sort_by=args.sort)
+        else:
+            logger.error("Invalid input path")
+            sys.exit(1)
+    except KeyboardInterrupt:
+        logger.info("\nProcess interrupted by user")
+        sys.exit(0)
+    except Exception as e:
+        logger.error(f"An error occurred: {e}")
         sys.exit(1)
 
 if __name__ == "__main__":
     main()
+    
