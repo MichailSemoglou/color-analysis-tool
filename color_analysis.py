@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Enhanced Color Analysis Tool
-===========================
+============================
 
 A comprehensive tool for analyzing colors in images, providing detailed information about
 color distributions, harmonies, and various color space conversions (RGB, HEX, CMYK).
