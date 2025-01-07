@@ -183,45 +183,50 @@ class ImageAnalyzer:
         """
         try:
             file_path = Path(file_path)
-            image = Image.open(file_path).convert('RGBA')
+            # Open image first to get original format
+            with Image.open(file_path) as img:
+                original_format = img.format
+                # Convert to RGBA for processing
+                image = img.convert('RGBA')
+            
             pixels = list(image.getdata())
             total_pixels = len(pixels)
 
             color_counts = Counter(pixels)
             sorted_colors = color_counts.most_common()
 
-            # Apply additional sorting if requested
+            # Filter out transparent colors first
+            visible_colors = [(color, count) for color, count in sorted_colors if color[3] > 0]
+            
+            # Apply sorting based on criterion
             if sort_by != "frequency":
-                colors_with_counts = [(color, count) for color, count in sorted_colors]
                 if sort_by == "hue":
-                    sorted_colors = sorted(
-                        colors_with_counts,
+                    visible_colors.sort(
                         key=lambda item: colorsys.rgb_to_hsv(item[0][0]/255, item[0][1]/255, item[0][2]/255)[0]
                     )
                 elif sort_by == "saturation":
-                    sorted_colors = sorted(
-                        colors_with_counts,
-                        key=lambda item: colorsys.rgb_to_hsv(item[0][0]/255, item[0][1]/255, item[0][2]/255)[1]
+                    visible_colors.sort(
+                        key=lambda item: colorsys.rgb_to_hsv(item[0][0]/255, item[0][1]/255, item[0][2]/255)[1],
+                        reverse=True
                     )
                 elif sort_by == "brightness":
-                    sorted_colors = sorted(
-                        colors_with_counts,
-                        key=lambda item: colorsys.rgb_to_hsv(item[0][0]/255, item[0][1]/255, item[0][2]/255)[2]
+                    visible_colors.sort(
+                        key=lambda item: colorsys.rgb_to_hsv(item[0][0]/255, item[0][1]/255, item[0][2]/255)[2],
+                        reverse=True
                     )
+            sorted_colors = visible_colors
 
             image_info = ImageInfo(
                 filename=file_path.name,
                 dimensions=image.size,
-                format=image.format,
+                format=original_format,
                 colors=[],
                 dominant_color=None
             )
 
             # Set dominant color (most frequent non-transparent color)
-            for color, _ in sorted_colors:
-                if color[3] > 0:  # If not fully transparent
-                    image_info.dominant_color = color[:3]
-                    break
+            if sorted_colors:
+                image_info.dominant_color = sorted_colors[0][0][:3]
 
             for color, count in tqdm(sorted_colors, desc="Analyzing colors"):
                 r, g, b, a = color
@@ -244,7 +249,7 @@ class ImageAnalyzer:
             logger.error(f"Error processing {file_path}: {e}")
             return None
 
-    def save_analysis(self, output_dir: Union[str, Path], image_info: ImageInfo) -> None:
+    def save_analysis(self, output_dir: Union[str, Path], image_info: ImageInfo, sort_by: str = "frequency") -> None:
         """Save analysis results to a file."""
         output_dir = Path(output_dir)
         output_dir.mkdir(parents=True, exist_ok=True)
@@ -259,7 +264,7 @@ class ImageAnalyzer:
             if image_info.dominant_color:
                 f.write(f"Dominant Color: RGB{image_info.dominant_color}\n")
             
-            f.write("\nColors (by specified sorting):\n")
+            f.write(f"\nColors (sorted by {sort_by}):\n")
             for idx, color in enumerate(image_info.colors, 1):
                 f.write(f"\nColor #{idx}:\n")
                 f.write(f"  RGB: {color.rgb}\n")
@@ -284,7 +289,7 @@ class ImageAnalyzer:
                 logger.info(f"Processing {file_path}...")
                 image_info = self.analyze_image(file_path, sort_by=sort_by)
                 if image_info:
-                    self.save_analysis(output_dir, image_info)
+                    self.save_analysis(output_dir, image_info, sort_by=sort_by)
 
 def main():
     """Main entry point for the script."""
@@ -326,7 +331,7 @@ def main():
             logger.info(f"Analyzing single file: {args.input}")
             image_info = analyzer.analyze_image(args.input, sort_by=args.sort)
             if image_info:
-                analyzer.save_analysis(args.output, image_info)
+                analyzer.save_analysis(args.output, image_info, sort_by=args.sort)
         elif args.input.is_dir():
             logger.info(f"Batch processing directory: {args.input}")
             analyzer.batch_process(args.input, args.output, sort_by=args.sort)
@@ -342,4 +347,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-    
