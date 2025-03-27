@@ -130,6 +130,30 @@ pip install -r requirements.txt
 python -m pytest tests/
 ```
 
+## Citation
+If you use this tool in your projects or research, please cite it as follows:
+
+### APA Format
+```
+Semoglou, M. (2025). Image Color Analysis Tool [Computer software]. GitHub. https://github.com/MichailSemoglou/color-analysis-tool
+```
+
+### BibTeX
+```bibtex
+@software{semoglou2025coloranalysis,
+  author = {Semoglou, Michail},
+  title = {Image Color Analysis Tool},
+  year = {2025},
+  url = {https://github.com/MichailSemoglou/color-analysis-tool},
+  version = {1.0.0}
+}
+```
+
+### Chicago Format
+```
+Semoglou, Michail. 2025. "Image Color Analysis Tool." GitHub. https://github.com/MichailSemoglou/color-analysis-tool.
+```
+
 ## License
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
