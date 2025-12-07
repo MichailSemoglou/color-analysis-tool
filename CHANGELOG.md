@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.2] - 2025-01-07
+
+### Added
+- DOI badge and citation information in README (10.5281/zenodo.17848059)
+
 ## [1.0.1] - 2025-01-07
 
 ### Changed
@@ -53,6 +58,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - PEP 621 compliant packaging with pyproject.toml
 - Type hints throughout the codebase
 
-[Unreleased]: https://github.com/MichailSemoglou/color-analysis-tool/compare/v1.0.1...HEAD
+[Unreleased]: https://github.com/MichailSemoglou/color-analysis-tool/compare/v1.0.2...HEAD
+[1.0.2]: https://github.com/MichailSemoglou/color-analysis-tool/compare/v1.0.1...v1.0.2
 [1.0.1]: https://github.com/MichailSemoglou/color-analysis-tool/compare/v1.0.0...v1.0.1
 [1.0.0]: https://github.com/MichailSemoglou/color-analysis-tool/releases/tag/v1.0.0

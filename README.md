@@ -159,7 +159,7 @@ If you use this software in your research, please cite it using the metadata in 
 @software{semoglou_color_analysis_tool,
   author       = {Semoglou, Michail},
   title        = {Color Analysis Tool},
-  version      = {1.0.1},
+  version      = {1.0.2},
   year         = {2025},
   url          = {https://github.com/MichailSemoglou/color-analysis-tool},
   doi          = {10.5281/zenodo.17848059}

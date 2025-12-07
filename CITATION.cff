@@ -10,7 +10,7 @@ authors:
 repository-code: "https://github.com/MichailSemoglou/color-analysis-tool"
 url: "https://github.com/MichailSemoglou/color-analysis-tool"
 doi: "10.5281/zenodo.17848059"
-version: "1.0.1"
+version: "1.0.2"
 date-released: "2025-01-07"
 license: MIT
 keywords:
@@ -35,6 +35,6 @@ preferred-citation:
       orcid: "https://orcid.org/0009-0003-3268-5657"
   repository-code: "https://github.com/MichailSemoglou/color-analysis-tool"
   doi: "10.5281/zenodo.17848059"
-  version: "1.0.1"
+  version: "1.0.2"
   date-released: "2025-01-07"
   license: MIT
