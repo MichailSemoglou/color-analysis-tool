@@ -1,7 +1,14 @@
 # Image Color Analysis Tool
+
+[![DOI](https://zenodo.org/badge/DOI/YOUR_DOI_HERE.svg)](https://doi.org/YOUR_DOI_HERE)
+[![PyPI version](https://badge.fury.io/py/color-analysis-tool.svg)](https://badge.fury.io/py/color-analysis-tool)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Python 3.7+](https://img.shields.io/badge/python-3.7+-blue.svg)](https://www.python.org/downloads/)
+
 A powerful Python tool for analyzing colors in images, providing detailed information about color distributions, harmonies, and various color space conversions. Perfect for designers, artists, and developers working with color analysis and manipulation.
 
 ## Features
+
 - **Comprehensive Color Analysis**: Extract and analyze colors from images
 - **Multiple Color Spaces**: Support for RGB, HEX, and CMYK color formats
 - **Color Harmony**: Calculate complementary, analogous, triadic, and tetradic color harmonies
@@ -11,8 +18,18 @@ A powerful Python tool for analyzing colors in images, providing detailed inform
 - **Detailed Reports**: Generate comprehensive analysis reports for each image
 - **Format Support**: Works with PNG, JPG, TIFF, WebP, and PSD files
 - **Progress Tracking**: Visual progress bars for processing status
+- **CLI and API**: Use as a command-line tool or import as a Python library
 
 ## Installation
+
+### From PyPI (Recommended)
+
+```bash
+pip install color-analysis-tool
+```
+
+### From Source
+
 1. Clone the repository:
 ```bash
 git clone https://github.com/MichailSemoglou/color-analysis-tool.git
@@ -25,36 +42,87 @@ python -m venv venv
 source venv/bin/activate  # On Windows, use: venv\Scripts\activate
 ```
 
-3. Install required packages:
+3. Install the package:
 ```bash
-pip install -r requirements.txt
+# For regular use
+pip install .
+
+# For development (editable install with dev dependencies)
+pip install -e ".[dev]"
 ```
 
 ## Usage
-### Basic Usage
-Analyze a single image:
+
+### Command Line Interface
+
+After installation, you can use the `color-analysis` command:
+
 ```bash
-python color_analysis.py path/to/image.jpg output/directory
+# Analyze a single image
+color-analysis path/to/image.jpg output/directory
+
+# Process all images in a directory
+color-analysis path/to/image/directory output/directory
+
+# Enable verbose logging
+color-analysis path/to/image.jpg output/directory -v
+
+# Sort colors by different criteria
+color-analysis path/to/image.jpg output/directory -s hue
+color-analysis path/to/image.jpg output/directory -s saturation
+color-analysis path/to/image.jpg output/directory -s brightness
+
+# Show version
+color-analysis --version
 ```
 
-Process all images in a directory:
-```bash
-python color_analysis.py path/to/image/directory output/directory
+### Python API
+
+You can also use the tool as a library in your Python projects:
+
+```python
+from color_analysis_tool import ImageAnalyzer
+
+analyzer = ImageAnalyzer()
+
+# Analyze a single image with custom sorting
+image_info = analyzer.analyze_image('path/to/image.jpg', sort_by='hue')
+
+# Save the analysis
+analyzer.save_analysis('output/directory', image_info)
+
+# Process multiple images recursively
+analyzer.batch_process('input/directory', 'output/directory', sort_by='frequency')
 ```
 
-Enable verbose logging:
-```bash
-python color_analysis.py path/to/image.jpg output/directory -v
-```
+#### Working with Analysis Results
 
-Sort colors by different criteria:
-```bash
-python color_analysis.py path/to/image.jpg output/directory -s hue
-python color_analysis.py path/to/image.jpg output/directory -s saturation
-python color_analysis.py path/to/image.jpg output/directory -s brightness
+```python
+from color_analysis_tool import ImageAnalyzer, ColorConverter, ColorHarmony
+
+analyzer = ImageAnalyzer()
+image_info = analyzer.analyze_image('photo.jpg')
+
+# Access image metadata
+print(f"Image: {image_info.filename}")
+print(f"Dimensions: {image_info.dimensions}")
+print(f"Dominant color: {image_info.dominant_color}")
+
+# Iterate through colors
+for color in image_info.colors[:10]:  # Top 10 colors
+    print(f"RGB: {color.rgb}, HEX: {color.hex}, Frequency: {color.frequency}%")
+    print(f"  Complementary: {color.harmonies['complementary']}")
+
+# Use utility classes directly
+converter = ColorConverter()
+cmyk = converter.rgb_to_cmyk(255, 128, 64)
+
+harmony = ColorHarmony()
+harmonies = harmony.find_harmonies((255, 128, 64))
 ```
 
 ### Example Output
+
 The tool generates a detailed analysis file for each image with the following information:
 - Image metadata (dimensions, format)
 - Dominant color information
@@ -77,32 +145,30 @@ Colors (sorted by frequency):
       Triadic: [(255, 255, 0), (255, 255, 255), (0, 255, 255)]
 ```
 
-## API Usage
-You can also use the tool as a library in your Python projects:
-```python
-from color_analysis import ImageAnalyzer
-
-analyzer = ImageAnalyzer()
-
-# Analyze a single image with custom sorting
-image_info = analyzer.analyze_image('path/to/image.jpg', sort_by='hue')
-
-# Save the analysis
-analyzer.save_analysis('output/directory', image_info)
-
-# Process multiple images recursively
-analyzer.batch_process('input/directory', 'output/directory', sort_by='frequency')
-```
-
 ## Requirements
+
 - Python 3.7 or higher
 - Pillow >= 9.0.0
 - tqdm >= 4.65.0
 - colormath >= 3.0.0
 
-See `requirements.txt` for detailed version information.
+## Citation
+
+If you use this software in your research, please cite it using the metadata in [CITATION.cff](CITATION.cff):
+
+```bibtex
+@software{semoglou_color_analysis_tool,
+  author       = {Semoglou, Michail},
+  title        = {Color Analysis Tool},
+  version      = {1.0.0},
+  year         = {2025},
+  url          = {https://github.com/MichailSemoglou/color-analysis-tool},
+  doi          = {YOUR_DOI_HERE}
+}
+```
 
 ## Contributing
+
 Contributions are welcome! Please feel free to submit a Pull Request. For major changes, please open an issue first to discuss what you would like to change.
 
 1. Fork the repository
@@ -112,9 +178,10 @@ Contributions are welcome! Please feel free to submit a Pull Request. For major 
 5. Open a Pull Request
 
 ### Development Setup
+
 1. Clone your fork:
 ```bash
-git clone https://github.com/MichailSemoglou/color-analysis-tool.git
+git clone https://github.com/YOUR_USERNAME/color-analysis-tool.git
 cd color-analysis-tool
 ```
 
@@ -122,12 +189,23 @@ cd color-analysis-tool
 ```bash
 python -m venv venv
 source venv/bin/activate  # On Windows: venv\Scripts\activate
-pip install -r requirements.txt
+pip install -e ".[dev]"
 ```
 
 3. Run tests:
 ```bash
-python -m pytest tests/
+pytest
+```
+
+4. Format code:
+```bash
+black color_analysis_tool/
+isort color_analysis_tool/
+```
+
+5. Type checking:
+```bash
+mypy color_analysis_tool/
 ```
 
 ## Citation
@@ -155,9 +233,15 @@ Semoglou, Michail. 2025. "Image Color Analysis Tool." GitHub. https://github.com
 ```
 
 ## License
+
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
 ## Acknowledgments
+
 - [Pillow](https://python-pillow.org/) for image processing capabilities
 - [colormath](https://python-colormath.readthedocs.io/) for color space conversions
 - [tqdm](https://github.com/tqdm/tqdm) for progress bar functionality
+
+## Changelog
+
+See [CHANGELOG.md](CHANGELOG.md) for a history of changes to this project.

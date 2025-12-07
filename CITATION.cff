@@ -2,7 +2,7 @@ cff-version: 1.2.0
 message: "If you use this software, please cite it as below."
 type: software
 title: "Image Color Analysis Tool"
-abstract: "A powerful Python tool for analyzing colors in images, providing detailed information about color distributions, harmonies, and various color space conversions. Perfect for designers, artists, and developers working with color analysis and manipulation."
+abstract: "A comprehensive Python tool for analyzing colors in images, providing detailed information about color distributions, harmonies, and various color space conversions (RGB, HEX, CMYK). Features include single image and batch processing, dominant color detection, color harmony calculations (complementary, analogous, triadic, tetradic), and support for multiple image formats."
 authors:
   - family-names: "Semoglou"
     given-names: "Michail"
@@ -15,20 +15,23 @@ license: MIT
 keywords:
   - "color analysis"
   - "image processing"
-  - "color theory"
   - "color harmony"
-  - "computer vision"
-  - "digital art"
-  - "python"
-  - "rgb"
-  - "cmyk"
-  - "color conversion"
+  - "design tools"
+  - "Python"
+  - "color extraction"
+  - "RGB"
+  - "CMYK"
+  - "HEX"
+  - "color space conversion"
+  - "batch processing"
+  - "dominant color detection"
 preferred-citation:
   type: software
   title: "Image Color Analysis Tool"
   authors:
     - family-names: "Semoglou"
       given-names: "Michail"
+      orcid: "https://orcid.org/0009-0003-3268-5657"
   repository-code: "https://github.com/MichailSemoglou/color-analysis-tool"
   version: "1.0.0"
   date-released: "2025-01-06"
