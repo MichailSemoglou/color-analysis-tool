@@ -150,7 +150,6 @@ Colors (sorted by frequency):
 - Python 3.7 or higher
 - Pillow >= 9.0.0
 - tqdm >= 4.65.0
-- colormath >= 3.0.0
 
 ## Citation
 
@@ -239,7 +238,6 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 ## Acknowledgments
 
 - [Pillow](https://python-pillow.org/) for image processing capabilities
-- [colormath](https://python-colormath.readthedocs.io/) for color space conversions
 - [tqdm](https://github.com/tqdm/tqdm) for progress bar functionality
 
 ## Changelog

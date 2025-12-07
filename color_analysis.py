@@ -30,7 +30,6 @@ Usage:
     -v, --verbose: Enable verbose logging
 """
 
-import os
 import sys
 from typing import Dict, List, Tuple, Optional, Union
 from dataclasses import dataclass
@@ -42,8 +41,6 @@ from PIL import Image
 from collections import Counter
 import colorsys
 from tqdm import tqdm
-from colormath.color_objects import sRGBColor, CMYKColor
-from colormath.color_conversions import convert_color
 
 # Configure logging
 logging.basicConfig(

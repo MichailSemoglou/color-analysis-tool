@@ -24,7 +24,7 @@ Basic Usage:
 For more information, visit: https://github.com/MichailSemoglou/color-analysis-tool
 """
 
-__version__ = "1.0.0"
+__version__ = "1.0.1"
 __author__ = "Michail Semoglou"
 __email__ = "michail.semoglou@example.com"
 __license__ = "MIT"

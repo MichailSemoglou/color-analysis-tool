@@ -1,7 +1,6 @@
 # Core dependencies
 Pillow>=9.0.0
 tqdm>=4.65.0
-colormath>=3.0.0
 
 # Development dependencies (install with: pip install -r requirements-dev.txt)
 # Or use: pip install -e ".[dev]"

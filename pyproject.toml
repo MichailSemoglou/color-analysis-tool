@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "color-analysis-tool"
-version = "1.0.0"
+version = "1.0.1"
 description = "A comprehensive tool for analyzing colors in images with harmony calculations and multiple color space conversions"
 readme = "README.md"
 license = "MIT"
@@ -54,8 +54,7 @@ classifiers = [
 
 dependencies = [
     "Pillow>=9.0.0",
-    "tqdm>=4.65.0",
-    "colormath>=3.0.0"
+    "tqdm>=4.65.0"
 ]
 
 [project.optional-dependencies]

@@ -7,7 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [1.0.0] - 2025-01-01
+## [1.0.1] - 2025-01-07
+
+### Changed
+- Removed unused `colormath` dependency (CMYK conversion uses built-in algorithm)
+- Removed unused `os` import from color_analysis.py
+- Lighter package with fewer dependencies (only Pillow and tqdm required)
+
+## [1.0.0] - 2025-01-06
 
 ### Added
 - Initial stable release
@@ -42,10 +49,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Technical Details
 - Built with Python 3.7+ compatibility
 - Uses Pillow for image processing
-- Uses colormath for color space conversions
 - Uses tqdm for progress visualization
 - PEP 621 compliant packaging with pyproject.toml
 - Type hints throughout the codebase
 
-[Unreleased]: https://github.com/MichailSemoglou/color-analysis-tool/compare/v1.0.0...HEAD
+[Unreleased]: https://github.com/MichailSemoglou/color-analysis-tool/compare/v1.0.1...HEAD
+[1.0.1]: https://github.com/MichailSemoglou/color-analysis-tool/compare/v1.0.0...v1.0.1
 [1.0.0]: https://github.com/MichailSemoglou/color-analysis-tool/releases/tag/v1.0.0
