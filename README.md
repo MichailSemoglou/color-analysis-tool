@@ -1,6 +1,6 @@
 # Image Color Analysis Tool
 
-[![DOI](https://zenodo.org/badge/DOI/YOUR_DOI_HERE.svg)](https://doi.org/YOUR_DOI_HERE)
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.17848059.svg)](https://doi.org/10.5281/zenodo.17848059)
 [![PyPI version](https://badge.fury.io/py/color-analysis-tool.svg)](https://badge.fury.io/py/color-analysis-tool)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.7+](https://img.shields.io/badge/python-3.7+-blue.svg)](https://www.python.org/downloads/)
@@ -159,10 +159,10 @@ If you use this software in your research, please cite it using the metadata in 
 @software{semoglou_color_analysis_tool,
   author       = {Semoglou, Michail},
   title        = {Color Analysis Tool},
-  version      = {1.0.0},
+  version      = {1.0.1},
   year         = {2025},
   url          = {https://github.com/MichailSemoglou/color-analysis-tool},
-  doi          = {YOUR_DOI_HERE}
+  doi          = {10.5281/zenodo.17848059}
 }
 ```
 
