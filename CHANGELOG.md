@@ -10,11 +10,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [1.0.2]
 
 ### Added
+
 - DOI badge and citation information in README (10.5281/zenodo.17848059)
 
 ## [1.0.1]
 
 ### Changed
+
 - Removed unused `colormath` dependency (CMYK conversion uses built-in algorithm)
 - Removed unused `os` import from color_analysis.py
 - Lighter package with fewer dependencies (only Pillow and tqdm required)
@@ -22,6 +24,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [1.0.0]
 
 ### Added
+
 - Initial stable release
 - Comprehensive color analysis for images
 - Multiple color space support (RGB, HEX, CMYK)
@@ -52,6 +55,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Zenodo integration for DOI minting
 
 ### Technical Details
+
 - Built with Python 3.7+ compatibility
 - Uses Pillow for image processing
 - Uses tqdm for progress visualization

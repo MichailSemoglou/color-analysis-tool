@@ -31,18 +31,21 @@ pip install color-analysis-tool
 ### From Source
 
 1. Clone the repository:
+
 ```bash
 git clone https://github.com/MichailSemoglou/color-analysis-tool.git
 cd color-analysis-tool
 ```
 
 2. Create and activate a virtual environment (recommended):
+
 ```bash
 python -m venv venv
 source venv/bin/activate  # On Windows, use: venv\Scripts\activate
 ```
 
 3. Install the package:
+
 ```bash
 # For regular use
 pip install .
@@ -124,6 +127,7 @@ harmonies = harmony.find_harmonies((255, 128, 64))
 ### Example Output
 
 The tool generates a detailed analysis file for each image with the following information:
+
 - Image metadata (dimensions, format)
 - Dominant color information
 - Color frequency analysis with sorting options
@@ -131,6 +135,7 @@ The tool generates a detailed analysis file for each image with the following in
 - Color harmonies for each major color
 
 Example output structure:
+
 ```
 Image Analysis for example.jpg
 Dimensions: 1920x1080
@@ -164,12 +169,14 @@ Contributions are welcome! Please feel free to submit a Pull Request. For major 
 ### Development Setup
 
 1. Clone your fork:
+
 ```bash
 git clone https://github.com/YOUR_USERNAME/color-analysis-tool.git
 cd color-analysis-tool
 ```
 
 2. Set up development environment:
+
 ```bash
 python -m venv venv
 source venv/bin/activate  # On Windows: venv\Scripts\activate
@@ -177,17 +184,20 @@ pip install -e ".[dev]"
 ```
 
 3. Run tests:
+
 ```bash
 pytest
 ```
 
 4. Format code:
+
 ```bash
 black color_analysis_tool/
 isort color_analysis_tool/
 ```
 
 5. Type checking:
+
 ```bash
 mypy color_analysis_tool/
 ```
@@ -197,6 +207,7 @@ mypy color_analysis_tool/
 If you use this software in your research, please cite it using the metadata in [CITATION.cff](CITATION.cff):
 
 ### BibTeX
+
 ```bibtex
 @software{semoglou_color_analysis_tool,
   author       = {Semoglou, Michail},
@@ -209,11 +220,13 @@ If you use this software in your research, please cite it using the metadata in 
 ```
 
 ### APA Format
+
 ```
 Semoglou, M. (2025). Image Color Analysis Tool [Computer software]. GitHub. https://github.com/MichailSemoglou/color-analysis-tool
 ```
 
 ### Chicago Format
+
 ```
 Semoglou, Michail. 2025. "Image Color Analysis Tool." GitHub. https://github.com/MichailSemoglou/color-analysis-tool.
 ```
