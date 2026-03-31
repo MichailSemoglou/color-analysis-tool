@@ -151,21 +151,6 @@ Colors (sorted by frequency):
 - Pillow >= 9.0.0
 - tqdm >= 4.65.0
 
-## Citation
-
-If you use this software in your research, please cite it using the metadata in [CITATION.cff](CITATION.cff):
-
-```bibtex
-@software{semoglou_color_analysis_tool,
-  author       = {Semoglou, Michail},
-  title        = {Color Analysis Tool},
-  version      = {1.0.2},
-  year         = {2025},
-  url          = {https://github.com/MichailSemoglou/color-analysis-tool},
-  doi          = {10.5281/zenodo.17848059}
-}
-```
-
 ## Contributing
 
 Contributions are welcome! Please feel free to submit a Pull Request. For major changes, please open an issue first to discuss what you would like to change.
@@ -208,22 +193,24 @@ mypy color_analysis_tool/
 ```
 
 ## Citation
-If you use this tool in your projects or research, please cite it as follows:
+
+If you use this software in your research, please cite it using the metadata in [CITATION.cff](CITATION.cff):
+
+### BibTeX
+```bibtex
+@software{semoglou_color_analysis_tool,
+  author       = {Semoglou, Michail},
+  title        = {Color Analysis Tool},
+  version      = {1.0.2},
+  year         = {2025},
+  url          = {https://github.com/MichailSemoglou/color-analysis-tool},
+  doi          = {10.5281/zenodo.17848059}
+}
+```
 
 ### APA Format
 ```
 Semoglou, M. (2025). Image Color Analysis Tool [Computer software]. GitHub. https://github.com/MichailSemoglou/color-analysis-tool
-```
-
-### BibTeX
-```bibtex
-@software{semoglou2025coloranalysis,
-  author = {Semoglou, Michail},
-  title = {Image Color Analysis Tool},
-  year = {2025},
-  url = {https://github.com/MichailSemoglou/color-analysis-tool},
-  version = {1.0.0}
-}
 ```
 
 ### Chicago Format
