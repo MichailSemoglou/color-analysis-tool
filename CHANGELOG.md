@@ -7,19 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [1.0.2] - 2025-01-07
+## [1.0.2]
 
 ### Added
 - DOI badge and citation information in README (10.5281/zenodo.17848059)
 
-## [1.0.1] - 2025-01-07
+## [1.0.1]
 
 ### Changed
 - Removed unused `colormath` dependency (CMYK conversion uses built-in algorithm)
 - Removed unused `os` import from color_analysis.py
 - Lighter package with fewer dependencies (only Pillow and tqdm required)
 
-## [1.0.0] - 2025-01-06
+## [1.0.0]
 
 ### Added
 - Initial stable release
