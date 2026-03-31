@@ -2,7 +2,6 @@
 
 import json
 import pytest
-from pathlib import Path
 from PIL import Image
 
 from color_analysis_tool.analyzer import ImageAnalyzer, ImageInfo, ColorInfo

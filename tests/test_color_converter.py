@@ -1,6 +1,5 @@
 """Tests for ColorConverter."""
 
-import pytest
 from color_analysis_tool.analyzer import ColorConverter
 
 

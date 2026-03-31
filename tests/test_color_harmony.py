@@ -1,6 +1,5 @@
 """Tests for ColorHarmony."""
 
-import pytest
 from color_analysis_tool.analyzer import ColorHarmony
 
 

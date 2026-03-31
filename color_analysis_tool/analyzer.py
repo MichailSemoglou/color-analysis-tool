@@ -11,7 +11,7 @@ import json
 import logging
 import colorsys
 from collections import Counter
-from dataclasses import dataclass, asdict
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, List, Tuple, Optional, Union
 
