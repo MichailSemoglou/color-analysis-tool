@@ -7,15 +7,19 @@ This module provides classes for analyzing colors in images, including:
 - ImageAnalyzer: Main image analysis functionality
 """
 
+import json
 import logging
-from typing import Dict, List, Tuple, Optional, Union
-from dataclasses import dataclass
-from pathlib import Path
-
-from PIL import Image
-from collections import Counter
 import colorsys
+from collections import Counter
+from dataclasses import dataclass, asdict
+from pathlib import Path
+from typing import Dict, List, Tuple, Optional, Union
+
+from PIL import Image, UnidentifiedImageError
 from tqdm import tqdm
+
+# Guard against decompression bomb attacks
+Image.MAX_IMAGE_PIXELS = 178_956_970  # ~170 MP
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -23,8 +27,13 @@ logger = logging.getLogger(__name__)
 # Type aliases
 RGB = Tuple[int, int, int]
 RGBA = Tuple[int, int, int, int]
-HSV = Tuple[float, float, float]
 CMYK = Tuple[int, int, int, int]
+
+VALID_SORT_OPTIONS = {"frequency", "hue", "saturation", "brightness"}
+VALID_OUTPUT_FORMATS = {"txt", "json"}
+
+# Number of top colors for which harmonies are computed
+HARMONY_LIMIT = 50
 
 
 @dataclass
@@ -77,7 +86,8 @@ class ColorConverter:
             RGB tuple of (red, green, blue) values (0-255)
         """
         hex_color = hex_color.lstrip('#')
-        return tuple(int(hex_color[i:i+2], 16) for i in (0, 2, 4))
+        r, g, b = (int(hex_color[i:i + 2], 16) for i in (0, 2, 4))
+        return (r, g, b)
 
     @staticmethod
     def rgb_to_hex(rgb: RGB) -> str:
@@ -122,7 +132,7 @@ class ColorConverter:
             round(c * 100),
             round(m * 100),
             round(y * 100),
-            round(k * 100)
+            round(k * 100),
         )
 
 
@@ -142,44 +152,36 @@ class ColorHarmony:
         Returns:
             Dictionary mapping harmony type names to lists of RGB colors
         """
-        harmonies = {}
         r, g, b = base_color
         h, s, v = colorsys.rgb_to_hsv(r / 255, g / 255, b / 255)
         h = h * 360
 
-        # Complementary
-        complementary_hue = (h + 180) % 360
-        harmonies['complementary'] = [(complementary_hue, s, v)]
+        hsv_sets: Dict[str, List[Tuple[float, float, float]]] = {
+            'complementary': [((h + 180) % 360, s, v)],
+            'analogous': [
+                ((h - 30) % 360, s, v),
+                (h, s, v),
+                ((h + 30) % 360, s, v),
+            ],
+            'triadic': [
+                ((h + 120) % 360, s, v),
+                (h, s, v),
+                ((h + 240) % 360, s, v),
+            ],
+            'tetradic': [
+                (h, s, v),
+                ((h + 90) % 360, s, v),
+                ((h + 180) % 360, s, v),
+                ((h + 270) % 360, s, v),
+            ],
+        }
 
-        # Analogous
-        harmonies['analogous'] = [
-            ((h - 30) % 360, s, v),
-            (h, s, v),
-            ((h + 30) % 360, s, v)
-        ]
-
-        # Triadic
-        harmonies['triadic'] = [
-            ((h + 120) % 360, s, v),
-            (h, s, v),
-            ((h + 240) % 360, s, v)
-        ]
-
-        # Tetradic
-        harmonies['tetradic'] = [
-            (h, s, v),
-            ((h + 90) % 360, s, v),
-            ((h + 180) % 360, s, v),
-            ((h + 270) % 360, s, v)
-        ]
-
-        # Convert all HSV values back to RGB
         return {
             key: [
-                tuple(int(x * 255) for x in colorsys.hsv_to_rgb(h / 360, s, v))
-                for h, s, v in colors
+                tuple(int(x * 255) for x in colorsys.hsv_to_rgb(hh / 360, ss, vv))  # type: ignore[misc]
+                for hh, ss, vv in colors
             ]
-            for key, colors in harmonies.items()
+            for key, colors in hsv_sets.items()
         }
 
 
@@ -201,107 +203,165 @@ class ImageAnalyzer:
 
     SUPPORTED_FORMATS = {'.png', '.jpg', '.jpeg', '.tiff', '.webp', '.psd'}
 
-    def __init__(self):
-        """Initialize the ImageAnalyzer with converter and harmony utilities."""
-        self.converter = ColorConverter()
-        self.harmony = ColorHarmony()
-
-    def analyze_image(self, file_path: Union[str, Path], sort_by: str = "frequency") -> Optional[ImageInfo]:
+    def analyze_image(
+        self,
+        file_path: Union[str, Path],
+        sort_by: str = "frequency",
+        max_colors: int = 0,
+    ) -> Optional[ImageInfo]:
         """Analyze colors in an image file.
 
         Args:
             file_path: Path to the image file
-            sort_by: Sorting criterion for colors. Options:
-                - 'frequency': Sort by color occurrence (default)
-                - 'hue': Sort by hue value
-                - 'saturation': Sort by saturation (high to low)
-                - 'brightness': Sort by brightness (high to low)
+            sort_by: Sorting criterion for colors. One of:
+                'frequency' (default), 'hue', 'saturation', 'brightness'
+            max_colors: Maximum number of colors to include in results.
+                Use 0 (default) for all colors. When > 0 the image is
+                first quantized to that palette size, which both speeds
+                up processing and produces a clean, meaningful palette.
 
         Returns:
             ImageInfo object containing analysis results, or None if analysis fails
+
+        Raises:
+            ValueError: If sort_by is not a recognised sort option.
         """
-        try:
-            file_path = Path(file_path)
-            # Open image first to get original format
-            with Image.open(file_path) as img:
-                original_format = img.format
-                # Convert to RGBA for processing
-                image = img.convert('RGBA')
-
-            pixels = list(image.getdata())
-            total_pixels = len(pixels)
-
-            color_counts = Counter(pixels)
-            sorted_colors = color_counts.most_common()
-
-            # Filter out transparent colors first
-            visible_colors = [(color, count) for color, count in sorted_colors if color[3] > 0]
-
-            # Apply sorting based on criterion
-            if sort_by != "frequency":
-                if sort_by == "hue":
-                    visible_colors.sort(
-                        key=lambda item: colorsys.rgb_to_hsv(item[0][0]/255, item[0][1]/255, item[0][2]/255)[0]
-                    )
-                elif sort_by == "saturation":
-                    visible_colors.sort(
-                        key=lambda item: colorsys.rgb_to_hsv(item[0][0]/255, item[0][1]/255, item[0][2]/255)[1],
-                        reverse=True
-                    )
-                elif sort_by == "brightness":
-                    visible_colors.sort(
-                        key=lambda item: colorsys.rgb_to_hsv(item[0][0]/255, item[0][1]/255, item[0][2]/255)[2],
-                        reverse=True
-                    )
-            sorted_colors = visible_colors
-
-            image_info = ImageInfo(
-                filename=file_path.name,
-                dimensions=image.size,
-                format=original_format,
-                colors=[],
-                dominant_color=None
+        if sort_by not in VALID_SORT_OPTIONS:
+            raise ValueError(
+                f"sort_by must be one of {VALID_SORT_OPTIONS}, got {sort_by!r}"
             )
 
-            # Set dominant color (most frequent non-transparent color)
-            if sorted_colors:
-                image_info.dominant_color = sorted_colors[0][0][:3]
+        file_path = Path(file_path)
+        try:
+            with Image.open(file_path) as img:
+                original_format = img.format or "UNKNOWN"
+                dimensions = img.size
 
-            for color, count in tqdm(sorted_colors, desc="Analyzing colors"):
-                r, g, b, a = color
-                if a == 0:  # Skip fully transparent colors
-                    continue
+                if max_colors > 0:
+                    # Quantize to a reduced palette for performance and clarity
+                    quantized = img.convert("RGB").quantize(colors=max_colors, method=Image.Quantize.MEDIANCUT)
+                    image = quantized.convert("RGBA")
+                else:
+                    image = img.convert("RGBA")
 
-                rgb = (r, g, b)
-                color_info = ColorInfo(
-                    rgb=rgb,
-                    hex=self.converter.rgb_to_hex(rgb),
-                    cmyk=self.converter.rgb_to_cmyk(r, g, b),
-                    frequency=round((count / total_pixels) * 100, 2),
-                    harmonies=self.harmony.find_harmonies(rgb)
-                )
-                image_info.colors.append(color_info)
-
-            return image_info
-
-        except Exception as e:
-            logger.error(f"Error processing {file_path}: {e}")
+        except (OSError, UnidentifiedImageError, ValueError) as exc:
+            logger.error(f"Error opening {file_path}: {exc}")
             return None
 
-    def save_analysis(self, output_dir: Union[str, Path], image_info: ImageInfo, sort_by: str = "frequency") -> None:
+        total_pixels = image.width * image.height
+        # Use get_flattened_data (Pillow >= 10) with fallback for older versions
+        try:
+            color_counts = Counter(image.get_flattened_data())
+        except AttributeError:
+            color_counts = Counter(image.getdata())
+
+        # Filter transparent pixels and sort by frequency descending
+        visible_colors = [
+            (color, count)
+            for color, count in color_counts.most_common()
+            if color[3] > 0
+        ]
+
+        if sort_by == "hue":
+            visible_colors.sort(
+                key=lambda item: colorsys.rgb_to_hsv(
+                    item[0][0] / 255, item[0][1] / 255, item[0][2] / 255
+                )[0]
+            )
+        elif sort_by == "saturation":
+            visible_colors.sort(
+                key=lambda item: colorsys.rgb_to_hsv(
+                    item[0][0] / 255, item[0][1] / 255, item[0][2] / 255
+                )[1],
+                reverse=True,
+            )
+        elif sort_by == "brightness":
+            visible_colors.sort(
+                key=lambda item: colorsys.rgb_to_hsv(
+                    item[0][0] / 255, item[0][1] / 255, item[0][2] / 255
+                )[2],
+                reverse=True,
+            )
+        # "frequency" is already the default order from most_common()
+
+        dominant_color: Optional[RGB] = None
+        if visible_colors:
+            # Dominant color is always the most frequent, regardless of sort order
+            most_frequent = color_counts.most_common(1)[0][0]
+            dominant_color = (most_frequent[0], most_frequent[1], most_frequent[2])
+
+        colors: List[ColorInfo] = []
+        for idx, (color, count) in enumerate(tqdm(visible_colors, desc="Analyzing colors")):
+            r, g, b, _ = color
+            rgb: RGB = (r, g, b)
+            harmonies = (
+                ColorHarmony.find_harmonies(rgb) if idx < HARMONY_LIMIT else {}
+            )
+            colors.append(ColorInfo(
+                rgb=rgb,
+                hex=ColorConverter.rgb_to_hex(rgb),
+                cmyk=ColorConverter.rgb_to_cmyk(r, g, b),
+                frequency=round((count / total_pixels) * 100, 2),
+                harmonies=harmonies,
+            ))
+
+        return ImageInfo(
+            filename=file_path.name,
+            dimensions=dimensions,
+            format=original_format,
+            colors=colors,
+            dominant_color=dominant_color,
+        )
+
+    def save_analysis(
+        self,
+        output_dir: Union[str, Path],
+        image_info: ImageInfo,
+        sort_by: str = "frequency",
+        output_format: str = "txt",
+        input_base: Optional[Path] = None,
+        file_path: Optional[Path] = None,
+    ) -> None:
         """Save analysis results to a file.
 
         Args:
-            output_dir: Directory where the analysis file will be saved
-            image_info: ImageInfo object containing the analysis results
-            sort_by: The sorting criterion used (for documentation in output)
+            output_dir: Root directory where analysis files will be saved.
+            image_info: ImageInfo object containing the analysis results.
+            sort_by: The sorting criterion used (recorded in the output).
+            output_format: Output format — 'txt' (default) or 'json'.
+            input_base: Base input directory used to mirror subdirectory
+                structure inside output_dir for batch processing.
+            file_path: Original file path; used with input_base to compute
+                the relative subdirectory for output.
+
+        Raises:
+            ValueError: If output_format is not recognised.
         """
+        if output_format not in VALID_OUTPUT_FORMATS:
+            raise ValueError(
+                f"output_format must be one of {VALID_OUTPUT_FORMATS}, got {output_format!r}"
+            )
+
         output_dir = Path(output_dir)
+
+        # Mirror subdirectory structure when batch-processing
+        if input_base is not None and file_path is not None:
+            try:
+                rel = file_path.parent.relative_to(input_base)
+                output_dir = output_dir / rel
+            except ValueError:
+                pass  # file_path not under input_base — write flat
+
         output_dir.mkdir(parents=True, exist_ok=True)
+        stem = f"{image_info.filename}_analysis"
 
-        output_file = output_dir / f"{image_info.filename}_analysis.txt"
+        if output_format == "json":
+            self._save_json(output_dir / f"{stem}.json", image_info, sort_by)
+        else:
+            self._save_txt(output_dir / f"{stem}.txt", image_info, sort_by)
 
-        with output_file.open('w') as f:
+    def _save_txt(self, output_file: Path, image_info: ImageInfo, sort_by: str) -> None:
+        with output_file.open('w', encoding='utf-8') as f:
             f.write(f"Image Analysis for {image_info.filename}\n")
             f.write(f"Dimensions: {image_info.dimensions[0]}x{image_info.dimensions[1]}\n")
             f.write(f"Format: {image_info.format}\n")
@@ -317,27 +377,69 @@ class ImageAnalyzer:
                 f.write(f"  CMYK: {color.cmyk}\n")
                 f.write(f"  Frequency: {color.frequency}%\n")
 
-                f.write("\n  Color Harmonies:\n")
-                for harmony_type, harmony_colors in color.harmonies.items():
-                    f.write(f"    {harmony_type.capitalize()}:\n")
-                    for harmony_color in harmony_colors:
-                        f.write(f"      RGB{harmony_color}\n")
+                if color.harmonies:
+                    f.write("\n  Color Harmonies:\n")
+                    for harmony_type, harmony_colors in color.harmonies.items():
+                        f.write(f"    {harmony_type.capitalize()}:\n")
+                        for harmony_color in harmony_colors:
+                            f.write(f"      RGB{harmony_color}\n")
 
         logger.info(f"Analysis saved to {output_file}")
 
-    def batch_process(self, input_dir: Union[str, Path], output_dir: Union[str, Path], sort_by: str = "frequency") -> None:
+    def _save_json(self, output_file: Path, image_info: ImageInfo, sort_by: str) -> None:
+        data = {
+            "filename": image_info.filename,
+            "dimensions": {"width": image_info.dimensions[0], "height": image_info.dimensions[1]},
+            "format": image_info.format,
+            "sorted_by": sort_by,
+            "dominant_color": list(image_info.dominant_color) if image_info.dominant_color else None,
+            "colors": [
+                {
+                    "rgb": list(c.rgb),
+                    "hex": c.hex,
+                    "cmyk": list(c.cmyk),
+                    "frequency": c.frequency,
+                    "harmonies": {k: [list(v) for v in vs] for k, vs in c.harmonies.items()},
+                }
+                for c in image_info.colors
+            ],
+        }
+        with output_file.open('w', encoding='utf-8') as f:
+            json.dump(data, f, indent=2)
+        logger.info(f"Analysis saved to {output_file}")
+
+    def batch_process(
+        self,
+        input_dir: Union[str, Path],
+        output_dir: Union[str, Path],
+        sort_by: str = "frequency",
+        max_colors: int = 0,
+        output_format: str = "txt",
+    ) -> None:
         """Process all supported images in a directory recursively.
 
         Args:
-            input_dir: Directory containing images to process
-            output_dir: Directory where analysis results will be saved
-            sort_by: Sorting criterion for colors in each analysis
+            input_dir: Directory containing images to process.
+            output_dir: Root directory where analysis results will be saved.
+                Subdirectory structure from input_dir is mirrored.
+            sort_by: Sorting criterion for colors in each analysis.
+            max_colors: Palette size for quantization (0 = no quantization).
+            output_format: 'txt' or 'json'.
         """
         input_dir = Path(input_dir)
+        output_dir = Path(output_dir)
 
-        for file_path in tqdm(list(input_dir.rglob('*')), desc="Processing files"):
+        # rglob returns a generator — no list() needed; tqdm wraps it fine
+        for file_path in tqdm(input_dir.rglob('*'), desc="Processing files"):
             if file_path.suffix.lower() in self.SUPPORTED_FORMATS:
                 logger.info(f"Processing {file_path}...")
-                image_info = self.analyze_image(file_path, sort_by=sort_by)
+                image_info = self.analyze_image(file_path, sort_by=sort_by, max_colors=max_colors)
                 if image_info:
-                    self.save_analysis(output_dir, image_info, sort_by=sort_by)
+                    self.save_analysis(
+                        output_dir,
+                        image_info,
+                        sort_by=sort_by,
+                        output_format=output_format,
+                        input_base=input_dir,
+                        file_path=file_path,
+                    )

@@ -5,11 +5,13 @@ This module provides the CLI entry point for the color analysis tool,
 allowing users to analyze images from the command line.
 
 Usage:
-    color-analysis [-h] [-v] [-s {frequency,hue,saturation,brightness}] input output
+    color-analysis [-h] [-v] [-s {frequency,hue,saturation,brightness}]
+                   [-c COLORS] [-f {txt,json}] input output
 
 Examples:
     color-analysis image.jpg output/
     color-analysis images/ output/ -s hue -v
+    color-analysis image.jpg output/ -c 32 -f json
 """
 
 import sys
@@ -35,10 +37,12 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  color-analysis image.jpg output/           Analyze single image
-  color-analysis images/ output/             Batch process directory
-  color-analysis image.jpg output/ -s hue    Sort by hue
-  color-analysis images/ output/ -v          Verbose output
+  color-analysis image.jpg output/                  Analyze single image
+  color-analysis images/ output/                    Batch process directory
+  color-analysis image.jpg output/ -s hue           Sort by hue
+  color-analysis image.jpg output/ -c 32            Quantize to 32 colors
+  color-analysis image.jpg output/ -f json          Output as JSON
+  color-analysis images/ output/ -c 64 -f json -v   Full options
 
 For more information, visit: https://github.com/MichailSemoglou/color-analysis-tool
         """
@@ -60,6 +64,24 @@ For more information, visit: https://github.com/MichailSemoglou/color-analysis-t
         help="Sort colors by specified criterion (default: frequency)"
     )
     parser.add_argument(
+        "-c", "--colors",
+        type=int,
+        default=0,
+        metavar="N",
+        help=(
+            "Quantize image to N dominant colors before analysis. "
+            "Produces a clean, meaningful palette and speeds up processing. "
+            "0 means no quantization (default: 0)"
+        )
+    )
+    parser.add_argument(
+        "-f", "--format",
+        choices=["txt", "json"],
+        default="txt",
+        dest="output_format",
+        help="Output format: plain text or JSON (default: txt)"
+    )
+    parser.add_argument(
         "-v", "--verbose",
         help="Enable verbose logging",
         action="store_true"
@@ -72,6 +94,9 @@ For more information, visit: https://github.com/MichailSemoglou/color-analysis-t
 
     args = parser.parse_args()
 
+    if args.colors < 0:
+        parser.error("--colors must be a non-negative integer")
+
     if args.verbose:
         logger.setLevel(logging.DEBUG)
         logging.getLogger("color_analysis_tool").setLevel(logging.DEBUG)
@@ -81,16 +106,29 @@ For more information, visit: https://github.com/MichailSemoglou/color-analysis-t
     try:
         if args.input.is_file():
             logger.info(f"Analyzing single file: {args.input}")
-            image_info = analyzer.analyze_image(args.input, sort_by=args.sort)
+            image_info = analyzer.analyze_image(
+                args.input, sort_by=args.sort, max_colors=args.colors
+            )
             if image_info:
-                analyzer.save_analysis(args.output, image_info, sort_by=args.sort)
+                analyzer.save_analysis(
+                    args.output,
+                    image_info,
+                    sort_by=args.sort,
+                    output_format=args.output_format,
+                )
                 logger.info("Analysis complete!")
             else:
                 logger.error("Failed to analyze image")
                 sys.exit(1)
         elif args.input.is_dir():
             logger.info(f"Batch processing directory: {args.input}")
-            analyzer.batch_process(args.input, args.output, sort_by=args.sort)
+            analyzer.batch_process(
+                args.input,
+                args.output,
+                sort_by=args.sort,
+                max_colors=args.colors,
+                output_format=args.output_format,
+            )
             logger.info("Batch processing complete!")
         else:
             logger.error(f"Invalid input path: {args.input}")

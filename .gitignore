@@ -173,6 +173,9 @@ cython_debug/
 # VS Code
 .vscode/
 
+# Virtual environments
+.venv/
+
 # Project-specific
 output/
 new/
