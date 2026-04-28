@@ -485,7 +485,7 @@ class ImageAnalyzer:
             )
         tw_lines = [
             f"// Tailwind CSS palette — extracted from {stem}",
-            f"// Paste inside the `colors` key of your tailwind.config.js",
+            "// Paste inside the `colors` key of your tailwind.config.js",
             "module.exports = {",
             "  theme: {",
             "    extend: {",
