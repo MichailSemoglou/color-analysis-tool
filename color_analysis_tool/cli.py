@@ -6,12 +6,13 @@ allowing users to analyze images from the command line.
 
 Usage:
     color-analysis [-h] [-v] [-s {frequency,hue,saturation,brightness}]
-                   [-c COLORS] [-f {txt,json}] input output
+                   [-c COLORS] [-f {txt,json,css}] input output
 
 Examples:
     color-analysis image.jpg output/
     color-analysis images/ output/ -s hue -v
     color-analysis image.jpg output/ -c 32 -f json
+    color-analysis image.jpg output/ -c 32 -f css
 """
 
 import sys
@@ -76,10 +77,16 @@ For more information, visit: https://github.com/MichailSemoglou/color-analysis-t
     )
     parser.add_argument(
         "-f", "--format",
-        choices=["txt", "json"],
+        choices=["txt", "json", "css"],
         default="txt",
         dest="output_format",
-        help="Output format: plain text or JSON (default: txt)"
+        help=(
+            "Output format (default: txt). "
+            "'css' emits three design-token files: "
+            "{name}_tokens.css (CSS custom properties), "
+            "{name}_tokens.json (W3C Design Token format), and "
+            "{name}_tailwind.js (Tailwind colors config snippet)."
+        )
     )
     parser.add_argument(
         "-v", "--verbose",

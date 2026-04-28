@@ -211,3 +211,82 @@ class TestBatchProcess:
         analyzer.batch_process(input_dir, output_dir, output_format="json")
 
         assert (output_dir / "img.png_analysis.json").exists()
+
+
+# ── save_analysis (css) ───────────────────────────────────────────────────────
+
+class TestSaveAnalysisCss:
+    def test_creates_three_files(self, analyzer, red_image, tmp_path):
+        info = analyzer.analyze_image(red_image)
+        analyzer.save_analysis(tmp_path, info, output_format="css")
+        assert (tmp_path / "red.png_tokens.css").exists()
+        assert (tmp_path / "red.png_tokens.json").exists()
+        assert (tmp_path / "red.png_tailwind.js").exists()
+
+    def test_css_contains_custom_property(self, analyzer, red_image, tmp_path):
+        info = analyzer.analyze_image(red_image)
+        analyzer.save_analysis(tmp_path, info, output_format="css")
+        content = (tmp_path / "red.png_tokens.css").read_text()
+        assert "--color-1:" in content
+        assert "#ff0000" in content
+
+    def test_css_contains_root_selector(self, analyzer, red_image, tmp_path):
+        info = analyzer.analyze_image(red_image)
+        analyzer.save_analysis(tmp_path, info, output_format="css")
+        content = (tmp_path / "red.png_tokens.css").read_text()
+        assert ":root {" in content
+
+    def test_css_dominant_property(self, analyzer, red_image, tmp_path):
+        info = analyzer.analyze_image(red_image)
+        analyzer.save_analysis(tmp_path, info, output_format="css")
+        content = (tmp_path / "red.png_tokens.css").read_text()
+        assert "--color-dominant:" in content
+
+    def test_tokens_json_is_valid(self, analyzer, red_image, tmp_path):
+        info = analyzer.analyze_image(red_image)
+        analyzer.save_analysis(tmp_path, info, output_format="css")
+        data = json.loads((tmp_path / "red.png_tokens.json").read_text())
+        assert "$schema" in data
+        assert "palette" in data
+        assert "color-1" in data["palette"]
+
+    def test_tokens_json_color_type(self, analyzer, red_image, tmp_path):
+        info = analyzer.analyze_image(red_image)
+        analyzer.save_analysis(tmp_path, info, output_format="css")
+        data = json.loads((tmp_path / "red.png_tokens.json").read_text())
+        entry = data["palette"]["color-1"]
+        assert entry["$type"] == "color"
+        assert entry["$value"] == "#ff0000"
+
+    def test_tokens_json_dominant_entry(self, analyzer, red_image, tmp_path):
+        info = analyzer.analyze_image(red_image)
+        analyzer.save_analysis(tmp_path, info, output_format="css")
+        data = json.loads((tmp_path / "red.png_tokens.json").read_text())
+        assert "color-dominant" in data["palette"]
+
+    def test_tailwind_contains_module_exports(self, analyzer, red_image, tmp_path):
+        info = analyzer.analyze_image(red_image)
+        analyzer.save_analysis(tmp_path, info, output_format="css")
+        content = (tmp_path / "red.png_tailwind.js").read_text()
+        assert "module.exports" in content
+        assert "#ff0000" in content
+
+    def test_tailwind_contains_extend_colors(self, analyzer, red_image, tmp_path):
+        info = analyzer.analyze_image(red_image)
+        analyzer.save_analysis(tmp_path, info, output_format="css")
+        content = (tmp_path / "red.png_tailwind.js").read_text()
+        assert "colors" in content
+        assert "extend" in content
+
+    def test_batch_css_output(self, analyzer, tmp_path):
+        input_dir = tmp_path / "input"
+        input_dir.mkdir()
+        img = Image.new("RGB", (5, 5), color=(0, 128, 255))
+        img.save(input_dir / "img.png")
+
+        output_dir = tmp_path / "output"
+        analyzer.batch_process(input_dir, output_dir, output_format="css")
+
+        assert (output_dir / "img.png_tokens.css").exists()
+        assert (output_dir / "img.png_tokens.json").exists()
+        assert (output_dir / "img.png_tailwind.js").exists()

@@ -2,7 +2,7 @@ cff-version: 1.2.0
 message: "If you use this software, please cite it as below."
 type: software
 title: "Image Color Analysis Tool"
-abstract: "A comprehensive Python tool for analyzing colors in images, providing detailed information about color distributions, harmonies, and various color space conversions (RGB, HEX, CMYK). Features include color quantization, single image and batch processing, dominant color detection, color harmony calculations (complementary, analogous, triadic, tetradic), flexible output formats (plain text and JSON), and support for multiple image formats."
+abstract: "A comprehensive Python tool for analyzing colors in images, providing detailed information about color distributions, harmonies, and various color space conversions (RGB, HEX, CMYK). Features include color quantization, single image and batch processing, dominant color detection, color harmony calculations (complementary, analogous, triadic, tetradic), flexible output formats (plain text, JSON, and CSS/Design Tokens), design token export compatible with the W3C Design Token Community Group format and Tailwind CSS, and support for multiple image formats (PNG, JPG, TIFF, WebP, PSD)."
 authors:
   - family-names: "Semoglou"
     given-names: "Michail"
@@ -10,8 +10,8 @@ authors:
 repository-code: "https://github.com/MichailSemoglou/color-analysis-tool"
 url: "https://github.com/MichailSemoglou/color-analysis-tool"
 doi: "10.5281/zenodo.17848059"
-version: "1.1.0"
-date-released: "2026-03-31"
+version: "1.2.0"
+date-released: "2026-04-28"
 license: MIT
 keywords:
   - "color analysis"
@@ -35,6 +35,6 @@ preferred-citation:
       orcid: "https://orcid.org/0009-0003-3268-5657"
   repository-code: "https://github.com/MichailSemoglou/color-analysis-tool"
   doi: "10.5281/zenodo.17848059"
-  version: "1.1.0"
-  date-released: "2026-03-31"
+  version: "1.2.0"
+  date-released: "2026-04-28"
   license: MIT

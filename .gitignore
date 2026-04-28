@@ -183,6 +183,7 @@ new/
 *.jpeg
 *.png
 *.tiff
+ROADMAP.md
 *.webp
 *.psd
 !test_images/

@@ -30,7 +30,7 @@ RGBA = Tuple[int, int, int, int]
 CMYK = Tuple[int, int, int, int]
 
 VALID_SORT_OPTIONS = {"frequency", "hue", "saturation", "brightness"}
-VALID_OUTPUT_FORMATS = {"txt", "json"}
+VALID_OUTPUT_FORMATS = {"txt", "json", "css"}
 
 # Number of top colors for which harmonies are computed
 HARMONY_LIMIT = 50
@@ -328,7 +328,9 @@ class ImageAnalyzer:
             output_dir: Root directory where analysis files will be saved.
             image_info: ImageInfo object containing the analysis results.
             sort_by: The sorting criterion used (recorded in the output).
-            output_format: Output format — 'txt' (default) or 'json'.
+            output_format: Output format — 'txt' (default), 'json', or 'css'.
+                'css' emits three files: a CSS custom-properties stylesheet,
+                a W3C Design Token JSON file, and a Tailwind config snippet.
             input_base: Base input directory used to mirror subdirectory
                 structure inside output_dir for batch processing.
             file_path: Original file path; used with input_base to compute
@@ -357,6 +359,8 @@ class ImageAnalyzer:
 
         if output_format == "json":
             self._save_json(output_dir / f"{stem}.json", image_info, sort_by)
+        elif output_format == "css":
+            self._save_css(output_dir, image_info)
         else:
             self._save_txt(output_dir / f"{stem}.txt", image_info, sort_by)
 
@@ -408,6 +412,98 @@ class ImageAnalyzer:
             json.dump(data, f, indent=2)
         logger.info(f"Analysis saved to {output_file}")
 
+    def _save_css(self, output_dir: Path, image_info: ImageInfo) -> None:
+        """Save palette as CSS custom properties, W3C Design Tokens, and Tailwind config.
+
+        Three files are written to output_dir:
+        - {filename}_tokens.css   — CSS custom properties
+        - {filename}_tokens.json  — W3C Design Token Community Group format
+        - {filename}_tailwind.js  — Tailwind CSS colors config snippet
+
+        Args:
+            output_dir: Directory to write the three token files into.
+            image_info: ImageInfo object containing the analysis results.
+        """
+        stem = image_info.filename
+        colors = image_info.colors
+
+        # ── CSS custom properties ─────────────────────────────────────────
+        css_lines = [
+            f"/* Color palette extracted from {stem} by Image Color Analysis Tool */",
+            f"/* {len(colors)} colors, sorted by frequency */",
+            ":root {",
+        ]
+        for idx, color in enumerate(colors, 1):
+            r, g, b = color.rgb
+            css_lines.append(
+                f"  --color-{idx}: {color.hex};  "
+                f"/* RGB({r}, {g}, {b}) · {color.frequency}% */"
+            )
+        if image_info.dominant_color:
+            css_lines.append(f"  --color-dominant: "
+                             f"{ColorConverter.rgb_to_hex(image_info.dominant_color)};")
+        css_lines.append("}")
+        css_file = output_dir / f"{stem}_tokens.css"
+        css_file.write_text("\n".join(css_lines), encoding="utf-8")
+        logger.info(f"CSS tokens saved to {css_file}")
+
+        # ── W3C Design Token Community Group format ───────────────────────
+        # Spec: https://design-tokens.github.io/community-group/format/
+        token_dict: Dict[str, object] = {}
+        for idx, color in enumerate(colors, 1):
+            token_dict[f"color-{idx}"] = {
+                "$type": "color",
+                "$value": color.hex,
+                "$description": (
+                    f"RGB({color.rgb[0]}, {color.rgb[1]}, {color.rgb[2]}) · "
+                    f"{color.frequency}% of image"
+                ),
+            }
+        if image_info.dominant_color:
+            token_dict["color-dominant"] = {
+                "$type": "color",
+                "$value": ColorConverter.rgb_to_hex(image_info.dominant_color),
+                "$description": "Most frequent color in the image",
+            }
+        tokens_wrapper = {
+            "$schema": "https://design-tokens.github.io/community-group/format/",
+            "$metadata": {"source": stem},
+            "palette": token_dict,
+        }
+        tokens_file = output_dir / f"{stem}_tokens.json"
+        tokens_file.write_text(json.dumps(tokens_wrapper, indent=2), encoding="utf-8")
+        logger.info(f"Design tokens saved to {tokens_file}")
+
+        # ── Tailwind CSS colors config snippet ────────────────────────────
+        tw_entries = [
+            f"  '{idx}': '{color.hex}',  // {color.frequency}%"
+            for idx, color in enumerate(colors, 1)
+        ]
+        if image_info.dominant_color:
+            tw_entries.append(
+                f"  'dominant': '{ColorConverter.rgb_to_hex(image_info.dominant_color)}',"
+            )
+        tw_lines = [
+            f"// Tailwind CSS palette — extracted from {stem}",
+            f"// Paste inside the `colors` key of your tailwind.config.js",
+            "module.exports = {",
+            "  theme: {",
+            "    extend: {",
+            "      colors: {",
+            f"        '{stem.replace('.', '-')}': {{",
+        ]
+        tw_lines.extend(f"          {e}" for e in tw_entries)
+        tw_lines += [
+            "        },",
+            "      },",
+            "    },",
+            "  },",
+            "};",
+        ]
+        tw_file = output_dir / f"{stem}_tailwind.js"
+        tw_file.write_text("\n".join(tw_lines), encoding="utf-8")
+        logger.info(f"Tailwind config saved to {tw_file}")
+
     def batch_process(
         self,
         input_dir: Union[str, Path],
@@ -424,7 +520,7 @@ class ImageAnalyzer:
                 Subdirectory structure from input_dir is mirrored.
             sort_by: Sorting criterion for colors in each analysis.
             max_colors: Palette size for quantization (0 = no quantization).
-            output_format: 'txt' or 'json'.
+            output_format: 'txt', 'json', or 'css'.
         """
         input_dir = Path(input_dir)
         output_dir = Path(output_dir)

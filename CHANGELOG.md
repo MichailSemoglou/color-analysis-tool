@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-04-28
+
+### Added
+
+- CSS / Design Token Export via `--format css` (CLI) and `output_format='css'` (API): three files are written per image
+  - `{filename}_tokens.css` — CSS custom properties (`--color-1: #3a7bd5;`) with dominant-color property
+  - `{filename}_tokens.json` — W3C Design Token Community Group format (`$type: "color"`) compatible with Style Dictionary and Figma Variables import
+  - `{filename}_tailwind.js` — Tailwind CSS `colors` config snippet ready to paste into `tailwind.config.js`
+- 11 new unit tests covering CSS, Design Token, and Tailwind output (including batch processing)
+
 ## [1.1.0]
 
 ### Added
@@ -84,7 +94,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - PEP 621 compliant packaging with `pyproject.toml`
 - Type hints throughout the codebase
 
-[Unreleased]: https://github.com/MichailSemoglou/color-analysis-tool/compare/v1.1.0...HEAD
+[Unreleased]: https://github.com/MichailSemoglou/color-analysis-tool/compare/v1.2.0...HEAD
+[1.2.0]: https://github.com/MichailSemoglou/color-analysis-tool/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/MichailSemoglou/color-analysis-tool/compare/v1.0.2...v1.1.0
 [1.0.2]: https://github.com/MichailSemoglou/color-analysis-tool/compare/v1.0.1...v1.0.2
 [1.0.1]: https://github.com/MichailSemoglou/color-analysis-tool/compare/v1.0.0...v1.0.1
