@@ -5,7 +5,7 @@
 [![CI](https://github.com/MichailSemoglou/color-analysis-tool/actions/workflows/ci.yml/badge.svg)](https://github.com/MichailSemoglou/color-analysis-tool/actions/workflows/ci.yml)
 [![PyPI version](https://badge.fury.io/py/color-analysis-tool.svg)](https://badge.fury.io/py/color-analysis-tool)
 [![PyPI Downloads](https://img.shields.io/pypi/dm/color-analysis-tool.svg)](https://pypistats.org/packages/color-analysis-tool)
-[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.17848059.svg)](https://doi.org/10.5281/zenodo.17848059)
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.19851366.svg)](https://doi.org/10.5281/zenodo.19851366)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/)
 
@@ -385,7 +385,7 @@ If you use this software in your research, please cite it using the metadata in 
   version      = {1.2.0},
   year         = {2026},
   url          = {https://github.com/MichailSemoglou/color-analysis-tool},
-  doi          = {10.5281/zenodo.17848059}
+  doi          = {10.5281/zenodo.19851366}
 }
 ```
 
