@@ -24,6 +24,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `max_colors` is validated up front: `analyze_image` raises `ValueError` and the CLI exits with a clear message for values outside 0-256, instead of failing inside quantization
 - `batch_process` now processes files in sorted order and skips a file whose report cannot be saved instead of aborting the whole batch
 - The wheel now ships the `py.typed` marker promised by the `Typing :: Typed` classifier
+- Output filenames derived from source images are now collision-resistant: when sanitization alters a name, a stable digest suffix keeps distinct files from overwriting each other, and backslashes are replaced for cross-platform safety
 - Filenames are sanitized before being embedded in generated reports and CSS/JS comments, so a crafted filename cannot inject content into output files
 - Pixels sharing an RGB value but differing in alpha now aggregate into one palette entry instead of appearing as duplicate colors with split frequencies
 

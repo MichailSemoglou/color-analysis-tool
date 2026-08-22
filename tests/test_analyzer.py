@@ -561,9 +561,10 @@ class TestFilenameSanitization:
         Image.new("RGB", (5, 5), color=(255, 0, 0)).save(path, format="PNG")
         info = analyzer.analyze_image(path)
         analyzer.save_analysis(tmp_path, info, output_format="css")
-        css = (tmp_path / "x.png injected: yes_tokens.css").read_text()
-        js = (tmp_path / "x.png injected: yes_tailwind.js").read_text()
-        for content in (css, js):
+        css_files = list(tmp_path.glob("x.png injected*_tokens.css"))
+        js_files = list(tmp_path.glob("x.png injected*_tailwind.js"))
+        assert len(css_files) == 1 and len(js_files) == 1
+        for content in (css_files[0].read_text(), js_files[0].read_text()):
             assert not any(line.strip() == "injected: yes" for line in content.split("\n"))
 
     def test_newline_stripped_from_txt_report(self, analyzer, tmp_path):
@@ -572,8 +573,9 @@ class TestFilenameSanitization:
         Image.new("RGB", (5, 5), color=(1, 2, 3)).save(path)
         info = analyzer.analyze_image(path)
         analyzer.save_analysis(tmp_path, info)
-        report = tmp_path / "x Dominant Color: RGB(9, 9, 9).png_analysis.txt"
-        lines = report.read_text().split("\n")
+        reports = list(tmp_path.glob("x Dominant Color*_analysis.txt"))
+        assert len(reports) == 1
+        lines = reports[0].read_text().split("\n")
         assert not any(line.startswith("Dominant Color: RGB(9") for line in lines)
         assert any(line == "Dominant Color: RGB(1, 2, 3)" for line in lines)
 
@@ -584,6 +586,34 @@ class TestFilenameSanitization:
         assert _sanitize_display_name("evil*/inject.png") == "evilinject.png"
         assert _sanitize_display_name("a\x07b\x1b.png") == "ab.png"
         assert _sanitize_display_name("plain.png") == "plain.png"
+
+    def test_output_stem_unchanged_for_clean_names(self):
+        # Normal filenames keep their familiar output names, no digest
+        from color_analysis_tool.analyzer import _safe_output_stem
+        assert _safe_output_stem("photo.png") == "photo.png"
+
+    def test_output_stem_collision_resistant(self, analyzer, tmp_path):
+        # Regression: two files whose names sanitize identically must not
+        # overwrite each other's reports
+        for name, color in [("a\nb.png", (255, 0, 0)), ("a b.png", (0, 0, 255))]:
+            Image.new("RGB", (5, 5), color=color).save(tmp_path / name, format="PNG")
+        out = tmp_path / "out"
+        for name in ("a\nb.png", "a b.png"):
+            info = analyzer.analyze_image(tmp_path / name)
+            analyzer.save_analysis(out, info)
+        reports = list(out.glob("a b.png*_analysis.txt"))
+        assert len(reports) == 2
+        assert reports[0].name != reports[1].name
+
+    def test_output_stem_replaces_backslash(self, analyzer, tmp_path):
+        # Backslash is legal in POSIX filenames but a separator on Windows
+        path = tmp_path / "dir\\evil.png"
+        Image.new("RGB", (5, 5), color=(1, 2, 3)).save(path, format="PNG")
+        info = analyzer.analyze_image(path)
+        analyzer.save_analysis(tmp_path, info)
+        (produced,) = [p for p in tmp_path.glob("*_analysis.txt")]
+        assert "\\" not in produced.name
+        assert produced.name.startswith("dir-evil.png-")
 
 
 # ── safety guard ──────────────────────────────────────────────────────────────

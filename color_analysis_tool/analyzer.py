@@ -8,6 +8,7 @@ This module provides classes for analyzing colors in images, including:
 """
 
 import colorsys
+import hashlib
 import json
 import logging
 import re
@@ -64,6 +65,21 @@ def _sanitize_display_name(name: str) -> str:
     name = name.replace("*/", "")
     name = re.sub(r"[\r\n\u2028\u2029]+", " ", name)
     return "".join(c for c in name if c.isprintable())
+
+
+def _safe_output_stem(name: str) -> str:
+    """Return a filesystem-safe, collision-resistant stem for output files.
+
+    Builds on the display sanitizer, additionally replacing backslashes
+    (legal in POSIX filenames, but a path separator on Windows). When
+    sanitization modified the name, a stable digest of the original is
+    appended so two different source files cannot overwrite each other.
+    """
+    safe = _sanitize_display_name(name).replace("\\", "-")
+    if safe != name:
+        digest = hashlib.sha256(name.encode("utf-8")).hexdigest()[:8]
+        safe = f"{safe}-{digest}"
+    return safe
 
 
 @dataclass
@@ -438,7 +454,7 @@ class ImageAnalyzer:
                 pass  # file_path not under input_base — write flat
 
         output_dir.mkdir(parents=True, exist_ok=True)
-        stem = f"{_sanitize_display_name(image_info.filename)}_analysis"
+        stem = f"{_safe_output_stem(image_info.filename)}_analysis"
 
         if output_format == "json":
             self._save_json(output_dir / f"{stem}.json", image_info, sort_by)
@@ -507,7 +523,7 @@ class ImageAnalyzer:
             output_dir: Directory to write the three token files into.
             image_info: ImageInfo object containing the analysis results.
         """
-        stem = _sanitize_display_name(image_info.filename)
+        stem = _safe_output_stem(image_info.filename)
         colors = image_info.colors
 
         # ── CSS custom properties ─────────────────────────────────────────
