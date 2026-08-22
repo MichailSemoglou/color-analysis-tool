@@ -15,9 +15,9 @@ Examples:
     color-analysis image.jpg output/ -c 32 -f css
 """
 
-import sys
 import argparse
 import logging
+import sys
 from pathlib import Path
 
 from .analyzer import ImageAnalyzer
@@ -30,7 +30,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-def main():
+def main() -> None:
     """Main entry point for the CLI."""
     parser = argparse.ArgumentParser(
         prog="color-analysis",
@@ -70,7 +70,7 @@ For more information, visit: https://github.com/MichailSemoglou/color-analysis-t
         default=0,
         metavar="N",
         help=(
-            "Quantize image to N dominant colors before analysis. "
+            "Quantize image to N dominant colors (1-256) before analysis. "
             "Produces a clean, meaningful palette and speeds up processing. "
             "0 means no quantization (default: 0)"
         )
@@ -101,8 +101,8 @@ For more information, visit: https://github.com/MichailSemoglou/color-analysis-t
 
     args = parser.parse_args()
 
-    if args.colors < 0:
-        parser.error("--colors must be a non-negative integer")
+    if not 0 <= args.colors <= 256:
+        parser.error("--colors must be an integer between 0 and 256")
 
     if args.verbose:
         logger.setLevel(logging.DEBUG)
