@@ -1,6 +1,7 @@
 """Tests for ImageAnalyzer using synthetic in-memory images."""
 
 import json
+import os
 
 import pytest
 from PIL import Image
@@ -614,6 +615,16 @@ class TestFilenameSanitization:
         (produced,) = [p for p in tmp_path.glob("*_analysis.txt")]
         assert "\\" not in produced.name
         assert produced.name.startswith("dir-evil.png-")
+
+    def test_non_utf8_filename_digest_does_not_raise(self):
+        # Regression: POSIX filenames may carry non-UTF-8 bytes, surfaced as
+        # surrogate escapes; os.fsencode round-trips them where strict UTF-8
+        # encoding would raise UnicodeEncodeError and abort the batch
+        from color_analysis_tool.analyzer import _safe_output_stem
+        name = os.fsdecode(b"bad-\xff.png")
+        stem = _safe_output_stem(name)
+        assert stem == _safe_output_stem(name)  # deterministic
+        assert stem.startswith("bad-.png-")
 
 
 # ── safety guard ──────────────────────────────────────────────────────────────

@@ -11,6 +11,7 @@ import colorsys
 import hashlib
 import json
 import logging
+import os
 import re
 from collections import Counter
 from dataclasses import dataclass
@@ -77,7 +78,9 @@ def _safe_output_stem(name: str) -> str:
     """
     safe = _sanitize_display_name(name).replace("\\", "-")
     if safe != name:
-        digest = hashlib.sha256(name.encode("utf-8")).hexdigest()[:8]
+        # os.fsencode preserves surrogate-escaped bytes from non-UTF-8
+        # filenames, where str.encode("utf-8") would raise
+        digest = hashlib.sha256(os.fsencode(name)).hexdigest()[:8]
         safe = f"{safe}-{digest}"
     return safe
 
