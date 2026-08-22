@@ -188,6 +188,7 @@ new/
 *.webp
 *.psd
 !test_images/
+!test_images/**
 
 # LaTeX build artifacts
 *.fdb_latexmk
