@@ -1,5 +1,7 @@
 """Tests for ColorConverter."""
 
+import pytest
+
 from color_analysis_tool.analyzer import ColorConverter
 
 
@@ -39,6 +41,31 @@ class TestHexToRgb:
         original = (100, 150, 200)
         assert ColorConverter.hex_to_rgb(ColorConverter.rgb_to_hex(original)) == original
 
+    def test_shorthand_with_hash(self):
+        assert ColorConverter.hex_to_rgb("#fff") == (255, 255, 255)
+
+    def test_shorthand_without_hash(self):
+        assert ColorConverter.hex_to_rgb("f53") == (255, 85, 51)
+
+    def test_shorthand_mixed_case(self):
+        assert ColorConverter.hex_to_rgb("#Ff5") == (255, 255, 85)
+
+    def test_empty_string_raises(self):
+        with pytest.raises(ValueError, match="Invalid hex color"):
+            ColorConverter.hex_to_rgb("")
+
+    def test_invalid_length_raises(self):
+        with pytest.raises(ValueError, match="Invalid hex color"):
+            ColorConverter.hex_to_rgb("#ff")
+
+    def test_five_digits_raise(self):
+        with pytest.raises(ValueError, match="Invalid hex color"):
+            ColorConverter.hex_to_rgb("12345")
+
+    def test_invalid_characters_raise(self):
+        with pytest.raises(ValueError, match="Invalid hex color"):
+            ColorConverter.hex_to_rgb("#gggggg")
+
 
 class TestRgbToCmyk:
     def test_black(self):
@@ -72,3 +99,25 @@ class TestRgbToCmyk:
         for r, g, b in [(128, 64, 32), (10, 200, 100), (255, 128, 0)]:
             result = ColorConverter.rgb_to_cmyk(r, g, b)
             assert all(0 <= v <= 100 for v in result)
+
+
+class TestChannelValidation:
+    def test_rgb_to_hex_rejects_out_of_range(self):
+        with pytest.raises(ValueError, match="0-255"):
+            ColorConverter.rgb_to_hex((256, 0, 0))
+
+    def test_rgb_to_hex_rejects_negative(self):
+        with pytest.raises(ValueError, match="0-255"):
+            ColorConverter.rgb_to_hex((-1, 0, 0))
+
+    def test_rgb_to_hex_rejects_wrong_length(self):
+        with pytest.raises(ValueError, match="0-255"):
+            ColorConverter.rgb_to_hex((18, 52))
+
+    def test_rgb_to_cmyk_rejects_out_of_range(self):
+        with pytest.raises(ValueError, match="0-255"):
+            ColorConverter.rgb_to_cmyk(300, 0, 0)
+
+    def test_valid_input_still_accepted(self):
+        assert ColorConverter.rgb_to_hex((0, 128, 255)) == "#0080ff"
+        assert ColorConverter.rgb_to_cmyk(0, 128, 255) == (100, 50, 0, 0)
