@@ -24,16 +24,24 @@ Basic Usage:
 For more information, visit: https://github.com/MichailSemoglou/color-analysis-tool
 """
 
-__version__ = "1.2.0"
+from importlib.metadata import PackageNotFoundError
+from importlib.metadata import version as _version
+
+try:
+    # Single source of truth: the [project] version in pyproject.toml
+    __version__ = _version("color-analysis-tool")
+except PackageNotFoundError:  # pragma: no cover - bare source checkout
+    __version__ = "unknown"
+
 __author__ = "Michail Semoglou"
 __license__ = "MIT"
 
 from .analyzer import (
-    ColorInfo,
-    ImageInfo,
     ColorConverter,
     ColorHarmony,
+    ColorInfo,
     ImageAnalyzer,
+    ImageInfo,
 )
 
 __all__ = [

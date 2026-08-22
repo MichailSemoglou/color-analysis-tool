@@ -1,5 +1,5 @@
 # Core dependencies
-Pillow>=9.0.0
+Pillow>=12.3.0
 tqdm>=4.65.0
 
 # Development dependencies (install with: pip install -r requirements-dev.txt)
