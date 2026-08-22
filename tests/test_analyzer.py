@@ -6,7 +6,7 @@ import os
 import pytest
 from PIL import Image
 
-from color_analysis_tool.analyzer import ColorInfo, ImageAnalyzer, ImageInfo
+from color_analysis_tool.analyzer import ColorConverter, ColorInfo, ImageAnalyzer, ImageInfo
 
 
 @pytest.fixture
@@ -555,12 +555,29 @@ class TestSaveAnalysisEdgeCases:
 # ── filename sanitization in generated files ─────────────────────────────────
 
 class TestFilenameSanitization:
+    @staticmethod
+    def _info(filename, rgb=(255, 0, 0)):
+        # Synthetic result: hostile names never touch the disk, keeping these
+        # tests portable to platforms that forbid such filenames (Windows)
+        color = ColorInfo(
+            rgb=rgb,
+            hex=ColorConverter.rgb_to_hex(rgb),
+            cmyk=ColorConverter.rgb_to_cmyk(*rgb),
+            frequency=100.0,
+            harmonies={},
+        )
+        return ImageInfo(
+            filename=filename,
+            dimensions=(5, 5),
+            format="PNG",
+            colors=[color],
+            dominant_color=rgb,
+        )
+
     def test_newline_stripped_from_css_and_js(self, analyzer, tmp_path):
         # A newline in the filename must not inject lines into generated
         # stylesheets or config snippets
-        path = tmp_path / "x.png\ninjected: yes"
-        Image.new("RGB", (5, 5), color=(255, 0, 0)).save(path, format="PNG")
-        info = analyzer.analyze_image(path)
+        info = self._info("x.png\ninjected: yes")
         analyzer.save_analysis(tmp_path, info, output_format="css")
         css_files = list(tmp_path.glob("x.png injected*_tokens.css"))
         js_files = list(tmp_path.glob("x.png injected*_tailwind.js"))
@@ -570,9 +587,7 @@ class TestFilenameSanitization:
 
     def test_newline_stripped_from_txt_report(self, analyzer, tmp_path):
         # A newline in the filename must not forge extra report lines
-        path = tmp_path / "x\nDominant Color: RGB(9, 9, 9).png"
-        Image.new("RGB", (5, 5), color=(1, 2, 3)).save(path)
-        info = analyzer.analyze_image(path)
+        info = self._info("x\nDominant Color: RGB(9, 9, 9).png", rgb=(1, 2, 3))
         analyzer.save_analysis(tmp_path, info)
         reports = list(tmp_path.glob("x Dominant Color*_analysis.txt"))
         assert len(reports) == 1
@@ -596,22 +611,15 @@ class TestFilenameSanitization:
     def test_output_stem_collision_resistant(self, analyzer, tmp_path):
         # Regression: two files whose names sanitize identically must not
         # overwrite each other's reports
-        for name, color in [("a\nb.png", (255, 0, 0)), ("a b.png", (0, 0, 255))]:
-            Image.new("RGB", (5, 5), color=color).save(tmp_path / name, format="PNG")
-        out = tmp_path / "out"
         for name in ("a\nb.png", "a b.png"):
-            info = analyzer.analyze_image(tmp_path / name)
-            analyzer.save_analysis(out, info)
-        reports = list(out.glob("a b.png*_analysis.txt"))
+            analyzer.save_analysis(tmp_path, self._info(name))
+        reports = list(tmp_path.glob("a b.png*_analysis.txt"))
         assert len(reports) == 2
         assert reports[0].name != reports[1].name
 
     def test_output_stem_replaces_backslash(self, analyzer, tmp_path):
         # Backslash is legal in POSIX filenames but a separator on Windows
-        path = tmp_path / "dir\\evil.png"
-        Image.new("RGB", (5, 5), color=(1, 2, 3)).save(path, format="PNG")
-        info = analyzer.analyze_image(path)
-        analyzer.save_analysis(tmp_path, info)
+        analyzer.save_analysis(tmp_path, self._info("dir\\evil.png"))
         (produced,) = [p for p in tmp_path.glob("*_analysis.txt")]
         assert "\\" not in produced.name
         assert produced.name.startswith("dir-evil.png-")
