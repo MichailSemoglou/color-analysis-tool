@@ -4,10 +4,10 @@
 
 [![CI](https://github.com/MichailSemoglou/color-analysis-tool/actions/workflows/ci.yml/badge.svg)](https://github.com/MichailSemoglou/color-analysis-tool/actions/workflows/ci.yml)
 [![PyPI version](https://badge.fury.io/py/color-analysis-tool.svg)](https://badge.fury.io/py/color-analysis-tool)
-[![PyPI Downloads](https://img.shields.io/pypi/dm/color-analysis-tool.svg)](https://pypistats.org/packages/color-analysis-tool)
+[![PyPI Downloads](https://static.pepy.tech/personalized-badge/color-analysis-tool?period=total&units=INTERNATIONAL_SYSTEM&left_color=GREY&right_color=BLUE&left_text=downloads)](https://pepy.tech/projects/color-analysis-tool)
 [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.19851366.svg)](https://doi.org/10.5281/zenodo.19851366)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/)
+[![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 
 Extract dominant palettes, compute color harmonies, and export design-ready tokens — in a single reproducible command, with a DOI you can cite.
 
@@ -15,7 +15,7 @@ Extract dominant palettes, compute color harmonies, and export design-ready toke
 
 - **Complete, not fragmented** — color extraction, harmony reasoning (complementary, analogous, triadic, tetradic), and multi-space conversion (RGB, HEX, CMYK) in one API call
 - **Design-ready output** — export directly to CSS custom properties, W3C Design Tokens, and Tailwind config alongside plain text and JSON
-- **Research-ready** — Zenodo DOI, ORCID attribution, deterministic output, and 60 unit tests
+- **Research-ready** — Zenodo DOI, ORCID attribution, deterministic output, and 125 unit tests
 
 ## Quickstart
 
@@ -44,7 +44,7 @@ The Image Color Analysis Tool addresses this gap by unifying color extraction, h
 - **Format Support**: Works with PNG, JPG, TIFF, WebP, and PSD files
 - **Progress Tracking**: Visual progress bars for processing status
 - **CLI and API**: Use as a command-line tool or import as a Python library
-- **Tested**: 60 unit tests covering converters, harmonies, analysis, and all output formats
+- **Tested**: 125 unit tests covering converters, harmonies, analysis, CLI, and all output formats
 
 ## Installation
 
@@ -192,9 +192,9 @@ The tool generates a detailed analysis file for each image with the following in
 **Plain text output** (`-f txt`, default):
 
 ```
-Image Analysis for example.jpg
-Dimensions: 1920x1080
-Format: JPEG
+Image Analysis for example.png
+Dimensions: 100x100
+Format: PNG
 Dominant Color: RGB(255, 255, 255)
 
 Colors (sorted by frequency):
@@ -207,29 +207,34 @@ Color #1:
 
   Color Harmonies:
     Complementary:
-      RGB(0, 0, 0)
+      RGB(255, 255, 255)
     Analogous:
-      RGB(255, 245, 245)
       RGB(255, 255, 255)
-      RGB(245, 255, 255)
+      RGB(255, 255, 255)
+      RGB(255, 255, 255)
     Triadic:
-      RGB(255, 255, 0)
       RGB(255, 255, 255)
-      RGB(0, 255, 255)
+      RGB(255, 255, 255)
+      RGB(255, 255, 255)
     Tetradic:
       RGB(255, 255, 255)
-      RGB(255, 0, 255)
-      RGB(0, 0, 0)
-      RGB(0, 255, 0)
+      RGB(255, 255, 255)
+      RGB(255, 255, 255)
+      RGB(255, 255, 255)
+
+Color #2:
+  ...
 ```
 
-**JSON output** (`-f json`):
+(The harmony colors of an achromatic base like white are all the base color itself.)
+
+**JSON output** (`-f json`; only the first of the four palette entries is shown):
 
 ```json
 {
-  "filename": "example.jpg",
-  "dimensions": { "width": 1920, "height": 1080 },
-  "format": "JPEG",
+  "filename": "example.png",
+  "dimensions": { "width": 100, "height": 100 },
+  "format": "PNG",
   "sorted_by": "frequency",
   "dominant_color": [255, 255, 255],
   "colors": [
@@ -239,22 +244,22 @@ Color #1:
       "cmyk": [0, 0, 0, 0],
       "frequency": 35.2,
       "harmonies": {
-        "complementary": [[0, 0, 0]],
+        "complementary": [[255, 255, 255]],
         "analogous": [
-          [255, 245, 245],
           [255, 255, 255],
-          [245, 255, 255]
+          [255, 255, 255],
+          [255, 255, 255]
         ],
         "triadic": [
-          [255, 255, 0],
           [255, 255, 255],
-          [0, 255, 255]
+          [255, 255, 255],
+          [255, 255, 255]
         ],
         "tetradic": [
           [255, 255, 255],
-          [255, 0, 255],
-          [0, 0, 0],
-          [0, 255, 0]
+          [255, 255, 255],
+          [255, 255, 255],
+          [255, 255, 255]
         ]
       }
     }
@@ -264,22 +269,26 @@ Color #1:
 
 **CSS / Design Token output** (`-f css`) — three files per image:
 
-`example.jpg_tokens.css`
+`example.png_tokens.css`
 
 ```css
-/* Color palette extracted from example.jpg by Image Color Analysis Tool */
+/* Color palette extracted from example.png by Image Color Analysis Tool */
+/* 4 colors, sorted by frequency */
 :root {
-  --color-1: #ffffff; /* RGB(255, 255, 255) · 35.2% */
-  --color-2: #3a7bd5; /* RGB(58, 123, 213) · 18.4% */
+  --color-1: #ffffff;  /* RGB(255, 255, 255) · 35.2% */
+  --color-2: #e63946;  /* RGB(230, 57, 70) · 25.0% */
+  --color-3: #2a9d8f;  /* RGB(42, 157, 143) · 21.4% */
+  --color-4: #3a7bd5;  /* RGB(58, 123, 213) · 18.4% */
   --color-dominant: #ffffff;
 }
 ```
 
-`example.jpg_tokens.json` (W3C Design Token format, compatible with Figma Variables and Style Dictionary)
+`example.png_tokens.json` (W3C Design Token format, compatible with Figma Variables and Style Dictionary)
 
 ```json
 {
   "$schema": "https://design-tokens.github.io/community-group/format/",
+  "$metadata": { "source": "example.png" },
   "palette": {
     "color-1": {
       "$type": "color",
@@ -288,8 +297,8 @@ Color #1:
     },
     "color-2": {
       "$type": "color",
-      "$value": "#3a7bd5",
-      "$description": "RGB(58, 123, 213) · 18.4% of image"
+      "$value": "#e63946",
+      "$description": "RGB(230, 57, 70) · 25.0% of image"
     },
     "color-dominant": {
       "$type": "color",
@@ -300,19 +309,21 @@ Color #1:
 }
 ```
 
-`example.jpg_tailwind.js`
+`example.png_tailwind.js`
 
 ```js
-// Tailwind CSS palette — extracted from example.jpg
+// Tailwind CSS palette — extracted from example.png
 // Paste inside the `colors` key of your tailwind.config.js
 module.exports = {
   theme: {
     extend: {
       colors: {
-        "example-jpg": {
-          1: "#ffffff", // 35.2%
-          2: "#3a7bd5", // 18.4%
-          dominant: "#ffffff",
+        'example-png': {
+            '1': '#ffffff',  // 35.2%
+            '2': '#e63946',  // 25.0%
+            '3': '#2a9d8f',  // 21.4%
+            '4': '#3a7bd5',  // 18.4%
+            'dominant': '#ffffff',
         },
       },
     },
@@ -322,8 +333,8 @@ module.exports = {
 
 ## Requirements
 
-- Python 3.9 or higher
-- Pillow >= 9.0.0
+- Python 3.10 or higher
+- Pillow >= 12.3.0
 - tqdm >= 4.65.0
 
 ## Contributing
@@ -382,7 +393,7 @@ If you use this software in your research, please cite it using the metadata in 
 @software{semoglou_color_analysis_tool,
   author       = {Semoglou, Michail},
   title        = {Color Analysis Tool},
-  version      = {1.2.0},
+  version      = {1.3.0},
   year         = {2026},
   url          = {https://github.com/MichailSemoglou/color-analysis-tool},
   doi          = {10.5281/zenodo.19851366}

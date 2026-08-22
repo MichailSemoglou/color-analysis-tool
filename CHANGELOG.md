@@ -5,7 +5,49 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [1.3.0] - 2026-08-22
+
+### Fixed
+
+- Dominant color is now selected from visible pixels only; fully transparent pixels can no longer become the dominant color
+- Color frequencies are now calculated against the visible-pixel count instead of the total pixel count, so palettes from images with transparency sum to 100%; a fully transparent image now returns an empty palette with no dominant color instead of reporting misleading frequencies
+- Harmony colors are now rounded rather than truncated when converted back to RGB, removing a systematic -1 channel bias
+- `hex_to_rgb` now validates its input with a clear `ValueError` for malformed strings and supports three-digit CSS shorthand such as `#fff`
+- Removed the unreachable `k == 1` branch in `rgb_to_cmyk` (black is already special-cased)
+- Tailwind config keys derived from filenames are now sanitized: spaces and other characters invalid in CSS/Tailwind identifiers are replaced with hyphens
+- Quantized analysis (`--colors N`) now preserves the alpha channel: transparent pixels are no longer converted to opaque black before counting
+- Fully transparent pixels no longer influence palette boundaries during quantization; their RGB payload is flattened to a single color before median cut runs
+- Corrected the 1.1.0 changelog entry below: `get_flattened_data()` was added in Pillow 12.1.0, not Pillow 10
+- `analyze_image` now catches `Image.DecompressionBombError` (not an `OSError` subclass): an image exceeding the pixel limit returns None and is skipped in batch processing instead of raising
+- Removed the redundant `UnidentifiedImageError` catch (it is an `OSError` subclass)
+- `rgb_to_hex`, `rgb_to_cmyk`, and `find_harmonies` now raise `ValueError` for channel values outside 0-255, matching the `hex_to_rgb` validation
+- `max_colors` is validated up front: `analyze_image` raises `ValueError` and the CLI exits with a clear message for values outside 0-256, instead of failing inside quantization
+- `batch_process` now processes files in sorted order and skips a file whose report cannot be saved instead of aborting the whole batch
+- The wheel now ships the `py.typed` marker promised by the `Typing :: Typed` classifier
+- Output filenames derived from source images are now collision-resistant: when sanitization alters a name, a stable digest suffix keeps distinct files from overwriting each other, and backslashes are replaced for cross-platform safety
+- Filenames are sanitized before being embedded in generated reports and CSS/JS comments, so a crafted filename cannot inject content into output files
+- Pixels sharing an RGB value but differing in alpha now aggregate into one palette entry instead of appearing as duplicate colors with split frequencies
+
+### Changed
+
+- Minimum Pillow version raised to 12.3.0, excluding versions affected by the PSD-loader out-of-bounds write (CVE-2026-25990) and later memory-safety advisories; `pip-audit` in CI guards against newer advisories
+- Documented why the decompression-bomb limit retains the Pillow default of ~179 MP rather than tightening it
+- CI now fails when test coverage drops below 90%
+- GitHub Actions are pinned to commit SHAs, CI jobs run with least-privilege permissions and no persisted checkout credentials, and every push and pull request runs `pip-audit`
+- The package version is now single-sourced in `pyproject.toml` and read at runtime via `importlib.metadata`
+- `mypy` now runs clean on the package, and imports across the package and tests are isort-ordered
+
+### Removed
+
+- Python 3.9 support (end of life since October 2025); the minimum is now Python 3.10
+- The deprecated `getdata()` fallback; Pillow >= 12.3.0 always provides `get_flattened_data()`
+
+### Added
+
+- SECURITY.md with a private vulnerability reporting channel
+- Alpha-channel regression tests covering mixed transparent/opaque and fully transparent images
+- CLI test suite (`tests/test_cli.py`) covering argument validation, output formats, batch mode, and exit codes
+- Edge-case tests for hue/saturation/brightness sort orders, grayscale/palette/LA image modes, corrupt input files, oversized-image rejection, and the decompression-bomb guard
 
 ## [1.2.0] - 2026-04-28
 
@@ -39,7 +81,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `hex_to_rgb` now returns a correctly typed `Tuple[int, int, int]` instead of a variable-length generator tuple
 - Image open errors now catch specific exceptions (`OSError`, `UnidentifiedImageError`) instead of a bare `except Exception`, preventing silent swallowing of unrelated errors
 - Added `Image.MAX_IMAGE_PIXELS` guard to protect against decompression bomb attacks
-- Pixel data read via `get_flattened_data()` (Pillow ≥ 10) with fallback to `getdata()`, resolving a deprecation warning
+- Pixel data read via `get_flattened_data()` (Pillow ≥ 12.1) with fallback to `getdata()`, resolving a deprecation warning
 
 ### Removed
 
@@ -94,7 +136,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - PEP 621 compliant packaging with `pyproject.toml`
 - Type hints throughout the codebase
 
-[Unreleased]: https://github.com/MichailSemoglou/color-analysis-tool/compare/v1.2.0...HEAD
+[1.3.0]: https://github.com/MichailSemoglou/color-analysis-tool/compare/v1.2.0...v1.3.0
 [1.2.0]: https://github.com/MichailSemoglou/color-analysis-tool/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/MichailSemoglou/color-analysis-tool/compare/v1.0.2...v1.1.0
 [1.0.2]: https://github.com/MichailSemoglou/color-analysis-tool/compare/v1.0.1...v1.0.2

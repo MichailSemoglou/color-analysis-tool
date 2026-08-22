@@ -7,19 +7,26 @@ This module provides classes for analyzing colors in images, including:
 - ImageAnalyzer: Main image analysis functionality
 """
 
+import colorsys
+import hashlib
 import json
 import logging
-import colorsys
+import os
+import re
 from collections import Counter
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, List, Tuple, Optional, Union
+from typing import Dict, List, Optional, Tuple, Union, cast
 
-from PIL import Image, UnidentifiedImageError
+from PIL import Image
 from tqdm import tqdm
 
-# Guard against decompression bomb attacks
-Image.MAX_IMAGE_PIXELS = 178_956_970  # ~170 MP
+# Guard against decompression bomb attacks. This intentionally retains
+# Pillow's default limit of ~179 MP rather than tightening it: the tool's
+# archival and design audience routinely processes high-resolution scans in
+# the 100-170 MP range, so a lower limit would reject legitimate input. The
+# explicit assignment keeps the limit stable if Pillow's default ever changes.
+Image.MAX_IMAGE_PIXELS = 178_956_970  # Pillow default, ~179 MP
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -34,6 +41,48 @@ VALID_OUTPUT_FORMATS = {"txt", "json", "css"}
 
 # Number of top colors for which harmonies are computed
 HARMONY_LIMIT = 50
+
+
+def _validate_rgb(rgb: Tuple[int, ...], func_name: str) -> None:
+    """Raise ValueError unless rgb holds exactly three channels in 0-255."""
+    if (
+        len(rgb) != 3
+        or not all(
+            isinstance(v, int) and not isinstance(v, bool) and 0 <= v <= 255
+            for v in rgb
+        )
+    ):
+        raise ValueError(
+            f"{func_name} expects three channel values in 0-255, got {rgb!r}"
+        )
+
+
+def _sanitize_display_name(name: str) -> str:
+    """Return a filename safe to embed in generated reports and comments.
+
+    Strips block-comment terminators, line breaks, and control characters
+    so a hostile filename cannot inject content into generated files.
+    """
+    name = name.replace("*/", "")
+    name = re.sub(r"[\r\n\u2028\u2029]+", " ", name)
+    return "".join(c for c in name if c.isprintable())
+
+
+def _safe_output_stem(name: str) -> str:
+    """Return a filesystem-safe, collision-resistant stem for output files.
+
+    Builds on the display sanitizer, additionally replacing backslashes
+    (legal in POSIX filenames, but a path separator on Windows). When
+    sanitization modified the name, a stable digest of the original is
+    appended so two different source files cannot overwrite each other.
+    """
+    safe = _sanitize_display_name(name).replace("\\", "-")
+    if safe != name:
+        # os.fsencode preserves surrogate-escaped bytes from non-UTF-8
+        # filenames, where str.encode("utf-8") would raise
+        digest = hashlib.sha256(os.fsencode(name)).hexdigest()[:8]
+        safe = f"{safe}-{digest}"
+    return safe
 
 
 @dataclass
@@ -79,14 +128,29 @@ class ColorConverter:
     def hex_to_rgb(hex_color: str) -> RGB:
         """Convert hexadecimal color to RGB.
 
+        Accepts six-digit hex strings ('#FF5733' or 'FF5733') and the
+        three-digit CSS shorthand ('#f53' or 'f53'), which is expanded
+        per CSS rules ('f53' is treated as 'ff5533').
+
         Args:
-            hex_color: Hexadecimal color string (e.g., '#FF5733' or 'FF5733')
+            hex_color: Hexadecimal color string, with optional leading '#'
 
         Returns:
             RGB tuple of (red, green, blue) values (0-255)
+
+        Raises:
+            ValueError: If the string is not a valid 3- or 6-digit
+                hexadecimal color.
         """
-        hex_color = hex_color.lstrip('#')
-        r, g, b = (int(hex_color[i:i + 2], 16) for i in (0, 2, 4))
+        value = hex_color.removeprefix('#')
+        if len(value) == 3:
+            # Expand CSS shorthand, e.g. 'f53' -> 'ff5533'
+            value = ''.join(c * 2 for c in value)
+        if len(value) != 6 or any(c not in '0123456789abcdefABCDEF' for c in value):
+            raise ValueError(
+                f"Invalid hex color {hex_color!r}: expected 3 or 6 hexadecimal digits"
+            )
+        r, g, b = (int(value[i:i + 2], 16) for i in (0, 2, 4))
         return (r, g, b)
 
     @staticmethod
@@ -98,7 +162,11 @@ class ColorConverter:
 
         Returns:
             Hexadecimal color string (e.g., '#ff5733')
+
+        Raises:
+            ValueError: If rgb does not hold three channel values in 0-255.
         """
+        _validate_rgb(rgb, "rgb_to_hex")
         return "#{:02x}{:02x}{:02x}".format(*rgb)
 
     @staticmethod
@@ -112,7 +180,11 @@ class ColorConverter:
 
         Returns:
             CMYK tuple of (cyan, magenta, yellow, black) percentages (0-100)
+
+        Raises:
+            ValueError: If a channel value falls outside 0-255.
         """
+        _validate_rgb((r, g, b), "rgb_to_cmyk")
         if r == g == b == 0:
             return (0, 0, 0, 100)
 
@@ -120,9 +192,6 @@ class ColorConverter:
         m = 1 - g / 255
         y = 1 - b / 255
         k = min(c, m, y)
-
-        if k == 1:
-            return (0, 0, 0, 100)
 
         c = (c - k) / (1 - k)
         m = (m - k) / (1 - k)
@@ -151,7 +220,11 @@ class ColorHarmony:
 
         Returns:
             Dictionary mapping harmony type names to lists of RGB colors
+
+        Raises:
+            ValueError: If base_color does not hold three channel values in 0-255.
         """
+        _validate_rgb(base_color, "find_harmonies")
         r, g, b = base_color
         h, s, v = colorsys.rgb_to_hsv(r / 255, g / 255, b / 255)
         h = h * 360
@@ -178,7 +251,7 @@ class ColorHarmony:
 
         return {
             key: [
-                tuple(int(x * 255) for x in colorsys.hsv_to_rgb(hh / 360, ss, vv))  # type: ignore[misc]
+                tuple(round(x * 255) for x in colorsys.hsv_to_rgb(hh / 360, ss, vv))  # type: ignore[misc]
                 for hh, ss, vv in colors
             ]
             for key, colors in hsv_sets.items()
@@ -219,16 +292,25 @@ class ImageAnalyzer:
                 Use 0 (default) for all colors. When > 0 the image is
                 first quantized to that palette size, which both speeds
                 up processing and produces a clean, meaningful palette.
+                Must be between 0 and 256.
 
         Returns:
-            ImageInfo object containing analysis results, or None if analysis fails
+            ImageInfo object containing analysis results, or None if analysis
+            fails. Frequencies are percentages of the visible (non-transparent)
+            pixels. A fully transparent image yields an ImageInfo with an
+            empty colors list and dominant_color=None.
 
         Raises:
-            ValueError: If sort_by is not a recognised sort option.
+            ValueError: If sort_by is not a recognised sort option, or if
+                max_colors is outside the range 0-256.
         """
         if sort_by not in VALID_SORT_OPTIONS:
             raise ValueError(
                 f"sort_by must be one of {VALID_SORT_OPTIONS}, got {sort_by!r}"
+            )
+        if not 0 <= max_colors <= 256:
+            raise ValueError(
+                f"max_colors must be between 0 and 256, got {max_colors!r}"
             )
 
         file_path = Path(file_path)
@@ -238,29 +320,48 @@ class ImageAnalyzer:
                 dimensions = img.size
 
                 if max_colors > 0:
-                    # Quantize to a reduced palette for performance and clarity
-                    quantized = img.convert("RGB").quantize(colors=max_colors, method=Image.Quantize.MEDIANCUT)
-                    image = quantized.convert("RGBA")
+                    # Quantize to a reduced palette for performance and clarity.
+                    # MEDIANCUT quantizes RGB only, so the original alpha
+                    # channel is reattached afterwards; transparent pixels
+                    # stay transparent instead of becoming opaque black.
+                    rgba = img.convert("RGBA")
+                    rgb_image = rgba.convert("RGB")
+                    # Flatten the RGB payload of fully transparent pixels to a
+                    # single color: invisible pixels then occupy at most one
+                    # palette slot instead of shifting palette boundaries.
+                    transparent_mask = rgba.getchannel("A").point(lambda a: 255 if a == 0 else 0)
+                    rgb_image.paste((0, 0, 0), mask=transparent_mask)
+                    quantized = rgb_image.quantize(colors=max_colors, method=Image.Quantize.MEDIANCUT)
+                    image = quantized.convert("RGB")
+                    image.putalpha(rgba.getchannel("A"))
                 else:
                     image = img.convert("RGBA")
 
-        except (OSError, UnidentifiedImageError, ValueError) as exc:
+        except (OSError, ValueError, Image.DecompressionBombError) as exc:
             logger.error(f"Error opening {file_path}: {exc}")
             return None
 
-        total_pixels = image.width * image.height
-        # Use get_flattened_data (Pillow >= 10) with fallback for older versions
-        try:
-            color_counts = Counter(image.get_flattened_data())
-        except AttributeError:
-            color_counts = Counter(image.getdata())
+        # Aggregate by RGB value after dropping fully transparent pixels:
+        # alpha only decides whether a pixel is visible, so semi-transparent
+        # variants of one color merge into a single palette entry instead of
+        # appearing as duplicates with split frequencies
+        # (cast: Pillow types get_flattened_data loosely; the image is RGBA
+        # by construction in both branches above)
+        pixels = cast(List[RGBA], image.get_flattened_data())
+        rgb_counts: Counter[RGB] = Counter()
+        for (r, g, b, a), count in Counter(pixels).items():
+            if a > 0:
+                rgb_counts[(r, g, b)] += count
 
-        # Filter transparent pixels and sort by frequency descending
-        visible_colors = [
-            (color, count)
-            for color, count in color_counts.most_common()
-            if color[3] > 0
-        ]
+        # Sort by frequency descending
+        visible_colors = rgb_counts.most_common()
+
+        # Frequencies are relative to the visible-pixel count, so palettes
+        # from images with transparency still sum to 100%. A fully
+        # transparent image yields an empty palette and no dominant color.
+        visible_pixels = sum(count for _, count in visible_colors)
+        if visible_pixels == 0:
+            logger.warning(f"{file_path} has no visible (non-transparent) pixels")
 
         if sort_by == "hue":
             visible_colors.sort(
@@ -286,13 +387,14 @@ class ImageAnalyzer:
 
         dominant_color: Optional[RGB] = None
         if visible_colors:
-            # Dominant color is always the most frequent, regardless of sort order
-            most_frequent = color_counts.most_common(1)[0][0]
+            # Dominant color is the most frequent visible color, regardless
+            # of sort order; fully transparent pixels are never selected
+            most_frequent = max(visible_colors, key=lambda item: item[1])[0]
             dominant_color = (most_frequent[0], most_frequent[1], most_frequent[2])
 
         colors: List[ColorInfo] = []
         for idx, (color, count) in enumerate(tqdm(visible_colors, desc="Analyzing colors")):
-            r, g, b, _ = color
+            r, g, b = color
             rgb: RGB = (r, g, b)
             harmonies = (
                 ColorHarmony.find_harmonies(rgb) if idx < HARMONY_LIMIT else {}
@@ -301,7 +403,7 @@ class ImageAnalyzer:
                 rgb=rgb,
                 hex=ColorConverter.rgb_to_hex(rgb),
                 cmyk=ColorConverter.rgb_to_cmyk(r, g, b),
-                frequency=round((count / total_pixels) * 100, 2),
+                frequency=round((count / visible_pixels) * 100, 2),
                 harmonies=harmonies,
             ))
 
@@ -355,7 +457,7 @@ class ImageAnalyzer:
                 pass  # file_path not under input_base — write flat
 
         output_dir.mkdir(parents=True, exist_ok=True)
-        stem = f"{image_info.filename}_analysis"
+        stem = f"{_safe_output_stem(image_info.filename)}_analysis"
 
         if output_format == "json":
             self._save_json(output_dir / f"{stem}.json", image_info, sort_by)
@@ -366,7 +468,7 @@ class ImageAnalyzer:
 
     def _save_txt(self, output_file: Path, image_info: ImageInfo, sort_by: str) -> None:
         with output_file.open('w', encoding='utf-8') as f:
-            f.write(f"Image Analysis for {image_info.filename}\n")
+            f.write(f"Image Analysis for {_sanitize_display_name(image_info.filename)}\n")
             f.write(f"Dimensions: {image_info.dimensions[0]}x{image_info.dimensions[1]}\n")
             f.write(f"Format: {image_info.format}\n")
 
@@ -424,7 +526,7 @@ class ImageAnalyzer:
             output_dir: Directory to write the three token files into.
             image_info: ImageInfo object containing the analysis results.
         """
-        stem = image_info.filename
+        stem = _safe_output_stem(image_info.filename)
         colors = image_info.colors
 
         # ── CSS custom properties ─────────────────────────────────────────
@@ -475,6 +577,10 @@ class ImageAnalyzer:
         logger.info(f"Design tokens saved to {tokens_file}")
 
         # ── Tailwind CSS colors config snippet ────────────────────────────
+        # The key is derived from the filename and becomes a class-name
+        # fragment, so replace runs of characters invalid in CSS/Tailwind
+        # identifiers (spaces, dots, etc.) with hyphens
+        tw_key = re.sub(r"[^A-Za-z0-9_-]+", "-", stem)
         tw_entries = [
             f"  '{idx}': '{color.hex}',  // {color.frequency}%"
             for idx, color in enumerate(colors, 1)
@@ -490,7 +596,7 @@ class ImageAnalyzer:
             "  theme: {",
             "    extend: {",
             "      colors: {",
-            f"        '{stem.replace('.', '-')}': {{",
+            f"        '{tw_key}': {{",
         ]
         tw_lines.extend(f"          {e}" for e in tw_entries)
         tw_lines += [
@@ -525,17 +631,21 @@ class ImageAnalyzer:
         input_dir = Path(input_dir)
         output_dir = Path(output_dir)
 
-        # rglob returns a generator — no list() needed; tqdm wraps it fine
-        for file_path in tqdm(input_dir.rglob('*'), desc="Processing files"):
+        # sorted() gives a deterministic processing order across filesystems
+        for file_path in tqdm(sorted(input_dir.rglob('*')), desc="Processing files"):
             if file_path.suffix.lower() in self.SUPPORTED_FORMATS:
                 logger.info(f"Processing {file_path}...")
                 image_info = self.analyze_image(file_path, sort_by=sort_by, max_colors=max_colors)
                 if image_info:
-                    self.save_analysis(
-                        output_dir,
-                        image_info,
-                        sort_by=sort_by,
-                        output_format=output_format,
-                        input_base=input_dir,
-                        file_path=file_path,
-                    )
+                    try:
+                        self.save_analysis(
+                            output_dir,
+                            image_info,
+                            sort_by=sort_by,
+                            output_format=output_format,
+                            input_base=input_dir,
+                            file_path=file_path,
+                        )
+                    except OSError as exc:
+                        # Skip the failed file instead of aborting the batch
+                        logger.error(f"Error saving analysis for {file_path}: {exc}")

@@ -1,5 +1,7 @@
 """Tests for ColorHarmony."""
 
+import pytest
+
 from color_analysis_tool.analyzer import ColorHarmony
 
 
@@ -60,3 +62,15 @@ def test_black_harmonies_are_all_black():
     for colors in result.values():
         for color in colors:
             assert color == (0, 0, 0)
+
+
+def test_harmony_channels_are_rounded_not_truncated():
+    # (0, 0, 15) has hue 240 degrees; its -30 degree analogous color computes
+    # to exactly 7.5 on the 0-255 scale, where int() gives 7 and round() gives 8
+    result = ColorHarmony.find_harmonies((0, 0, 15))
+    assert result["analogous"][0] == (0, 8, 15)
+
+
+def test_find_harmonies_rejects_out_of_range():
+    with pytest.raises(ValueError, match="0-255"):
+        ColorHarmony.find_harmonies((0, 0, 300))
