@@ -26,9 +26,9 @@ on the main branch and released with the next patch.
 - The tool parses untrusted image files through Pillow. Keep Pillow current:
   the dependency floor is raised when a security fix lands, and CI runs
   `pip-audit` on every push and pull request.
-- Decompression-bomb protection is enabled via `Image.MAX_IMAGE_PIXELS`
-  (Pillow default, ~179 MP). Images above twice the limit are rejected and
-  skipped.
+- Decompression-bomb protection is configured via `Image.MAX_IMAGE_PIXELS`
+  with a limit of ~179 MP (178,956,970 pixels). Images above twice that
+  (~358 MP) are rejected and skipped.
 - Batch processing follows filesystem symlinks. Only analyze directories
   from sources you trust.
 - Filenames are sanitized before they are embedded in generated reports,
