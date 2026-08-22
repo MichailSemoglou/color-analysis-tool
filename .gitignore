@@ -179,11 +179,30 @@ cython_debug/
 # Project-specific
 output/
 new/
+.github/instructions.md
+.kimi/instructions.md
 *.jpg
 *.jpeg
 *.png
 *.tiff
-ROADMAP.md
 *.webp
 *.psd
 !test_images/
+
+# LaTeX build artifacts
+*.fdb_latexmk
+*.fls
+*.synctex.gz
+*.aux
+*.log
+*.out
+*.toc
+
+# macOS
+.DS_Store
+
+ROADMAP.md
+20260821_REVIEW.md
+AGENTS.md
+
+kilo.json
