@@ -15,7 +15,7 @@ Extract dominant palettes, compute color harmonies, and export design-ready toke
 
 - **Complete, not fragmented** — color extraction, harmony reasoning (complementary, analogous, triadic, tetradic), and multi-space conversion (RGB, HEX, CMYK) in one API call
 - **Design-ready output** — export directly to CSS custom properties, W3C Design Tokens, and Tailwind config alongside plain text and JSON
-- **Research-ready** — Zenodo DOI, ORCID attribution, deterministic output, and 125 unit tests
+- **Research-ready** — Zenodo DOI, ORCID attribution, deterministic output, and 136 unit tests
 
 ## Quickstart
 
@@ -36,7 +36,7 @@ The Image Color Analysis Tool addresses this gap by unifying color extraction, h
 - **Multiple Color Spaces**: Support for RGB, HEX, and CMYK color formats
 - **Color Harmony**: Calculate complementary, analogous, triadic, and tetradic color harmonies
 - **Color Sorting Options**: Sort colors by frequency, hue, saturation, or brightness
-- **Color Quantization**: Reduce images to a meaningful palette (e.g. 32 dominant colors) for faster, cleaner analysis
+- **Automatic Palette Sizing**: Bounded palettes out of the box: high-color images are quantized to 32 colors automatically; use `--colors N` for explicit control or `--colors 0` to disable
 - **Dominant Color Detection**: Automatically identify the most prominent color
 - **Batch Processing**: Analyze multiple images recursively in directories, mirroring subdirectory structure
 - **Flexible Output**: Generate reports as plain text, structured JSON, or design-ready CSS tokens
@@ -44,7 +44,7 @@ The Image Color Analysis Tool addresses this gap by unifying color extraction, h
 - **Format Support**: Works with PNG, JPG, TIFF, WebP, and PSD files
 - **Progress Tracking**: Visual progress bars for processing status
 - **CLI and API**: Use as a command-line tool or import as a Python library
-- **Tested**: 125 unit tests covering converters, harmonies, analysis, CLI, and all output formats
+- **Tested**: 136 unit tests covering converters, harmonies, analysis, CLI, and all output formats
 
 ## Installation
 
@@ -104,7 +104,8 @@ color-analysis path/to/image.jpg output/directory -s hue
 color-analysis path/to/image.jpg output/directory -s saturation
 color-analysis path/to/image.jpg output/directory -s brightness
 
-# Quantize to 32 dominant colors (faster and cleaner for photos)
+# Quantize to 32 dominant colors (default is 'auto': an automatic bounded
+# palette; -c 0 disables quantization entirely)
 color-analysis path/to/image.jpg output/directory -c 32
 
 # Output as JSON instead of plain text
@@ -393,7 +394,7 @@ If you use this software in your research, please cite it using the metadata in 
 @software{semoglou_color_analysis_tool,
   author       = {Semoglou, Michail},
   title        = {Color Analysis Tool},
-  version      = {1.3.0},
+  version      = {1.4.0},
   year         = {2026},
   url          = {https://github.com/MichailSemoglou/color-analysis-tool},
   doi          = {10.5281/zenodo.17848058}
