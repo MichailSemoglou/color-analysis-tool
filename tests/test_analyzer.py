@@ -658,6 +658,17 @@ class TestFilenameSanitization:
             assert path.parent == tmp_path
             assert "/" not in path.name and "\\" not in path.name
 
+    def test_output_stem_replaces_windows_invalid_chars(self, analyzer, tmp_path):
+        # A colon makes a name drive-relative on Windows and addresses NTFS
+        # alternate data streams; it must not survive into the output name
+        analyzer.save_analysis(tmp_path, self._info("C:escape.png"))
+        analyzer.save_analysis(tmp_path, self._info("name:stream.png"))
+        produced = list(tmp_path.glob("*_analysis.txt"))
+        assert len(produced) == 2
+        for path in produced:
+            assert path.parent == tmp_path
+            assert ":" not in path.name
+
     def test_non_utf8_filename_digest_does_not_raise(self):
         # Regression: POSIX filenames may carry non-UTF-8 bytes, surfaced as
         # surrogate escapes; os.fsencode round-trips them where strict UTF-8

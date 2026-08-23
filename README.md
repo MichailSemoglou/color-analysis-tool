@@ -15,7 +15,7 @@ Extract dominant palettes, compute color harmonies, and export design-ready toke
 
 - **Complete, not fragmented** — color extraction, harmony reasoning (complementary, analogous, triadic, tetradic), and multi-space conversion (RGB, HEX, CMYK) in one API call
 - **Design-ready output** — export directly to CSS custom properties, W3C Design Tokens, and Tailwind config alongside plain text and JSON
-- **Research-ready** — Zenodo DOI, ORCID attribution, deterministic output, and 141 unit tests
+- **Research-ready** — Zenodo DOI, ORCID attribution, deterministic output, and 142 unit tests
 
 ## Quickstart
 
@@ -44,7 +44,7 @@ The Image Color Analysis Tool addresses this gap by unifying color extraction, h
 - **Format Support**: Works with PNG, JPG, TIFF, WebP, and PSD files
 - **Progress Tracking**: Visual progress bars for processing status
 - **CLI and API**: Use as a command-line tool or import as a Python library
-- **Tested**: 141 unit tests covering converters, harmonies, analysis, CLI, and all output formats
+- **Tested**: 142 unit tests covering converters, harmonies, analysis, CLI, and all output formats
 
 ## Installation
 
