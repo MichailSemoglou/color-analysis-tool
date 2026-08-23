@@ -115,7 +115,7 @@ def save_analysis(
     if output_format == "json":
         _save_json(output_dir / f"{stem}.json", image_info, sort_by, truncated_from)
     elif output_format == "css":
-        _save_css(output_dir, image_info, truncated_from)
+        _save_css(output_dir, image_info, sort_by, truncated_from)
     else:
         _save_txt(output_dir / f"{stem}.txt", image_info, sort_by, truncated_from)
 
@@ -191,6 +191,7 @@ def _save_json(
 def _save_css(
     output_dir: Path,
     image_info: ImageInfo,
+    sort_by: str,
     truncated_from: Optional[int] = None,
 ) -> None:
     """Save palette as CSS custom properties, W3C Design Tokens, and Tailwind config.
@@ -203,6 +204,7 @@ def _save_css(
     Args:
         output_dir: Directory to write the three token files into.
         image_info: ImageInfo object containing the analysis results.
+        sort_by: The sorting criterion used (recorded in the CSS header).
         truncated_from: When set, the original color count before
             truncation; a note is recorded in all three files.
     """
@@ -216,7 +218,7 @@ def _save_css(
     # ── CSS custom properties ─────────────────────────────────────────
     css_lines = [
         f"/* Color palette extracted from {stem} by Image Color Analysis Tool */",
-        f"/* {len(colors)} colors, sorted by frequency */",
+        f"/* {len(colors)} colors, sorted by {sort_by} */",
     ]
     if truncated_from:
         css_lines.append(

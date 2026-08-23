@@ -320,6 +320,13 @@ class TestSaveAnalysisCss:
         content = (tmp_path / "red.png_tokens.css").read_text()
         assert "--color-dominant:" in content
 
+    def test_css_records_sort_order(self, analyzer, two_color_image, tmp_path):
+        # Regression: the CSS header must record the actual sort criterion
+        info = analyzer.analyze_image(two_color_image, sort_by="hue")
+        analyzer.save_analysis(tmp_path, info, sort_by="hue", output_format="css")
+        content = (tmp_path / "two_color.png_tokens.css").read_text()
+        assert "sorted by hue" in content
+
     def test_tokens_json_is_valid(self, analyzer, red_image, tmp_path):
         info = analyzer.analyze_image(red_image)
         analyzer.save_analysis(tmp_path, info, output_format="css")
