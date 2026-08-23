@@ -337,18 +337,19 @@ class ImageAnalyzer:
             logger.error(f"Error opening {file_path}: {exc}")
             return None
 
+        # An explicit palette size quantizes first and counts once; "auto"
+        # needs the unquantized unique-color count for its threshold decision
+        if not isinstance(max_colors, str) and max_colors > 0:
+            image = _quantize_preserving_alpha(image, max_colors)
+
         rgb_counts = _count_visible_rgb(image)
 
-        if isinstance(max_colors, str):  # "auto", validated above
-            if len(rgb_counts) > AUTO_PALETTE_THRESHOLD:
-                logger.info(
-                    f"{file_path}: {len(rgb_counts)} unique visible colors, "
-                    f"quantizing to {AUTO_PALETTE_SIZE} (auto palette)"
-                )
-                image = _quantize_preserving_alpha(image, AUTO_PALETTE_SIZE)
-                rgb_counts = _count_visible_rgb(image)
-        elif max_colors > 0:
-            image = _quantize_preserving_alpha(image, max_colors)
+        if isinstance(max_colors, str) and len(rgb_counts) > AUTO_PALETTE_THRESHOLD:
+            logger.info(
+                f"{file_path}: {len(rgb_counts)} unique visible colors, "
+                f"quantizing to {AUTO_PALETTE_SIZE} (auto palette)"
+            )
+            image = _quantize_preserving_alpha(image, AUTO_PALETTE_SIZE)
             rgb_counts = _count_visible_rgb(image)
 
         # Sort by frequency descending
