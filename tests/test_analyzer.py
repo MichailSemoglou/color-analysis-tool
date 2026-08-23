@@ -609,14 +609,14 @@ class TestFilenameSanitization:
     def test_comment_terminator_and_control_chars_stripped(self):
         # Filenames cannot contain '/', so */ is defense in depth; control
         # characters are reachable on POSIX filesystems
-        from color_analysis_tool.analyzer import _sanitize_display_name
+        from color_analysis_tool.exporters import _sanitize_display_name
         assert _sanitize_display_name("evil*/inject.png") == "evilinject.png"
         assert _sanitize_display_name("a\x07b\x1b.png") == "ab.png"
         assert _sanitize_display_name("plain.png") == "plain.png"
 
     def test_output_stem_unchanged_for_clean_names(self):
         # Normal filenames keep their familiar output names, no digest
-        from color_analysis_tool.analyzer import _safe_output_stem
+        from color_analysis_tool.exporters import _safe_output_stem
         assert _safe_output_stem("photo.png") == "photo.png"
 
     def test_output_stem_collision_resistant(self, analyzer, tmp_path):
@@ -639,7 +639,7 @@ class TestFilenameSanitization:
         # Regression: POSIX filenames may carry non-UTF-8 bytes, surfaced as
         # surrogate escapes; os.fsencode round-trips them where strict UTF-8
         # encoding would raise UnicodeEncodeError and abort the batch
-        from color_analysis_tool.analyzer import _safe_output_stem
+        from color_analysis_tool.exporters import _safe_output_stem
         name = os.fsdecode(b"bad-\xff.png")
         stem = _safe_output_stem(name)
         assert stem == _safe_output_stem(name)  # deterministic
@@ -713,28 +713,28 @@ def _multi_color_info(n, filename="multi.png"):
 
 class TestOutputTruncation:
     def test_txt_note_and_cap(self, analyzer, tmp_path, monkeypatch):
-        monkeypatch.setattr("color_analysis_tool.analyzer.MAX_OUTPUT_COLORS", 2)
+        monkeypatch.setattr("color_analysis_tool.exporters.MAX_OUTPUT_COLORS", 2)
         analyzer.save_analysis(tmp_path, _multi_color_info(5))
         content = (tmp_path / "multi.png_analysis.txt").read_text()
         assert "truncated to the first 2 of 5 colors" in content
         assert content.count("Color #") == 2
 
     def test_json_truncated_from_key(self, analyzer, tmp_path, monkeypatch):
-        monkeypatch.setattr("color_analysis_tool.analyzer.MAX_OUTPUT_COLORS", 2)
+        monkeypatch.setattr("color_analysis_tool.exporters.MAX_OUTPUT_COLORS", 2)
         analyzer.save_analysis(tmp_path, _multi_color_info(5), output_format="json")
         data = json.loads((tmp_path / "multi.png_analysis.json").read_text())
         assert data["truncated_from"] == 5
         assert len(data["colors"]) == 2
 
     def test_json_no_key_when_under_cap(self, analyzer, tmp_path, monkeypatch):
-        monkeypatch.setattr("color_analysis_tool.analyzer.MAX_OUTPUT_COLORS", 10)
+        monkeypatch.setattr("color_analysis_tool.exporters.MAX_OUTPUT_COLORS", 10)
         analyzer.save_analysis(tmp_path, _multi_color_info(5), output_format="json")
         data = json.loads((tmp_path / "multi.png_analysis.json").read_text())
         assert "truncated_from" not in data
         assert len(data["colors"]) == 5
 
     def test_css_notes_and_cap(self, analyzer, tmp_path, monkeypatch):
-        monkeypatch.setattr("color_analysis_tool.analyzer.MAX_OUTPUT_COLORS", 2)
+        monkeypatch.setattr("color_analysis_tool.exporters.MAX_OUTPUT_COLORS", 2)
         analyzer.save_analysis(tmp_path, _multi_color_info(5), output_format="css")
         css = (tmp_path / "multi.png_tokens.css").read_text()
         js = (tmp_path / "multi.png_tailwind.js").read_text()
