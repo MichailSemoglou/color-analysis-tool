@@ -19,6 +19,7 @@ import argparse
 import logging
 import sys
 from pathlib import Path
+from typing import Union
 
 from .analyzer import ImageAnalyzer
 
@@ -66,13 +67,13 @@ For more information, visit: https://github.com/MichailSemoglou/color-analysis-t
     )
     parser.add_argument(
         "-c", "--colors",
-        type=int,
-        default=0,
+        default="auto",
         metavar="N",
         help=(
             "Quantize image to N dominant colors (1-256) before analysis. "
             "Produces a clean, meaningful palette and speeds up processing. "
-            "0 means no quantization (default: 0)"
+            "0 disables quantization; 'auto' (default) bounds the palette "
+            "automatically"
         )
     )
     parser.add_argument(
@@ -101,8 +102,15 @@ For more information, visit: https://github.com/MichailSemoglou/color-analysis-t
 
     args = parser.parse_args()
 
-    if not 0 <= args.colors <= 256:
-        parser.error("--colors must be an integer between 0 and 256")
+    if args.colors == "auto":
+        colors: Union[int, str] = "auto"
+    else:
+        try:
+            colors = int(args.colors)
+        except ValueError:
+            parser.error("--colors must be 'auto' or an integer between 0 and 256")
+        if not 0 <= colors <= 256:
+            parser.error("--colors must be 'auto' or an integer between 0 and 256")
 
     if args.verbose:
         logger.setLevel(logging.DEBUG)
@@ -114,7 +122,7 @@ For more information, visit: https://github.com/MichailSemoglou/color-analysis-t
         if args.input.is_file():
             logger.info(f"Analyzing single file: {args.input}")
             image_info = analyzer.analyze_image(
-                args.input, sort_by=args.sort, max_colors=args.colors
+                args.input, sort_by=args.sort, max_colors=colors
             )
             if image_info:
                 analyzer.save_analysis(
@@ -133,7 +141,7 @@ For more information, visit: https://github.com/MichailSemoglou/color-analysis-t
                 args.input,
                 args.output,
                 sort_by=args.sort,
-                max_colors=args.colors,
+                max_colors=colors,
                 output_format=args.output_format,
             )
             logger.info("Batch processing complete!")

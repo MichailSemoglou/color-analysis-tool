@@ -8,18 +8,16 @@ This module provides classes for analyzing colors in images, including:
 """
 
 import colorsys
-import hashlib
-import json
 import logging
-import os
-import re
 from collections import Counter
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple, Union, cast
+from typing import Dict, Iterable, List, Optional, Tuple, Union, cast
 
 from PIL import Image
 from tqdm import tqdm
+
+from . import exporters
 
 # Guard against decompression bomb attacks. This intentionally retains
 # Pillow's default limit of ~179 MP rather than tightening it: the tool's
@@ -37,10 +35,14 @@ RGBA = Tuple[int, int, int, int]
 CMYK = Tuple[int, int, int, int]
 
 VALID_SORT_OPTIONS = {"frequency", "hue", "saturation", "brightness"}
-VALID_OUTPUT_FORMATS = {"txt", "json", "css"}
 
 # Number of top colors for which harmonies are computed
 HARMONY_LIMIT = 50
+
+# Automatic palette bounds used when max_colors="auto": analyze every unique
+# visible color up to the threshold, quantize to the palette size beyond it
+AUTO_PALETTE_THRESHOLD = 256
+AUTO_PALETTE_SIZE = 32
 
 
 def _validate_rgb(rgb: Tuple[int, ...], func_name: str) -> None:
@@ -57,32 +59,56 @@ def _validate_rgb(rgb: Tuple[int, ...], func_name: str) -> None:
         )
 
 
-def _sanitize_display_name(name: str) -> str:
-    """Return a filename safe to embed in generated reports and comments.
+def _count_visible_rgb(image: Image.Image) -> "Counter[RGB]":
+    """Count pixels by RGB value, dropping fully transparent pixels.
 
-    Strips block-comment terminators, line breaks, and control characters
-    so a hostile filename cannot inject content into generated files.
+    Alpha only decides whether a pixel is visible, so semi-transparent
+    variants of one color merge into a single count instead of appearing
+    as duplicates with split frequencies.
     """
-    name = name.replace("*/", "")
-    name = re.sub(r"[\r\n\u2028\u2029]+", " ", name)
-    return "".join(c for c in name if c.isprintable())
+    # cast: Pillow types get_flattened_data loosely; callers pass RGBA
+    # images. Counter consumes the iterable directly, so no full pixel
+    # list is ever materialized.
+    pixels = cast(Iterable[RGBA], image.get_flattened_data())
+    counts: Counter[RGB] = Counter()
+    for (r, g, b, a), count in Counter(pixels).items():
+        if a > 0:
+            counts[(r, g, b)] += count
+    return counts
 
 
-def _safe_output_stem(name: str) -> str:
-    """Return a filesystem-safe, collision-resistant stem for output files.
+def _unique_visible_exceeds(image: Image.Image, threshold: int) -> bool:
+    """Return True when an image has more than threshold unique visible colors.
 
-    Builds on the display sanitizer, additionally replacing backslashes
-    (legal in POSIX filenames, but a path separator on Windows). When
-    sanitization modified the name, a stable digest of the original is
-    appended so two different source files cannot overwrite each other.
+    Bounded probe for the auto-palette decision: it stops at threshold + 1
+    unique colors, so its memory cost does not scale with the number of
+    colors in the image.
     """
-    safe = _sanitize_display_name(name).replace("\\", "-")
-    if safe != name:
-        # os.fsencode preserves surrogate-escaped bytes from non-UTF-8
-        # filenames, where str.encode("utf-8") would raise
-        digest = hashlib.sha256(os.fsencode(name)).hexdigest()[:8]
-        safe = f"{safe}-{digest}"
-    return safe
+    seen = set()
+    for r, g, b, a in cast(Iterable[RGBA], image.get_flattened_data()):
+        if a > 0:
+            seen.add((r, g, b))
+            if len(seen) > threshold:
+                return True
+    return False
+
+
+def _quantize_preserving_alpha(image: Image.Image, colors: int) -> Image.Image:
+    """Quantize an RGBA image to at most colors colors, preserving alpha.
+
+    MEDIANCUT quantizes RGB only, so the alpha channel is reattached
+    afterwards. The RGB payload of fully transparent pixels is flattened to
+    a single color first: invisible pixels then occupy at most one palette
+    slot instead of shifting palette boundaries.
+    """
+    rgba = image.convert("RGBA")
+    rgb_image = rgba.convert("RGB")
+    transparent_mask = rgba.getchannel("A").point(lambda a: 255 if a == 0 else 0)
+    rgb_image.paste((0, 0, 0), mask=transparent_mask)
+    quantized = rgb_image.quantize(colors=colors, method=Image.Quantize.MEDIANCUT)
+    result = quantized.convert("RGB")
+    result.putalpha(rgba.getchannel("A"))
+    return result
 
 
 @dataclass
@@ -280,7 +306,7 @@ class ImageAnalyzer:
         self,
         file_path: Union[str, Path],
         sort_by: str = "frequency",
-        max_colors: int = 0,
+        max_colors: Union[int, str] = "auto",
     ) -> Optional[ImageInfo]:
         """Analyze colors in an image file.
 
@@ -288,11 +314,11 @@ class ImageAnalyzer:
             file_path: Path to the image file
             sort_by: Sorting criterion for colors. One of:
                 'frequency' (default), 'hue', 'saturation', 'brightness'
-            max_colors: Maximum number of colors to include in results.
-                Use 0 (default) for all colors. When > 0 the image is
-                first quantized to that palette size, which both speeds
-                up processing and produces a clean, meaningful palette.
-                Must be between 0 and 256.
+            max_colors: Palette size control. 'auto' (default) analyzes every
+                unique visible color when there are at most 256, and otherwise
+                quantizes to a bounded 32-color palette. An integer N (1-256)
+                always quantizes to that palette size; 0 disables quantization
+                entirely (unbounded output).
 
         Returns:
             ImageInfo object containing analysis results, or None if analysis
@@ -302,13 +328,22 @@ class ImageAnalyzer:
 
         Raises:
             ValueError: If sort_by is not a recognised sort option, or if
-                max_colors is outside the range 0-256.
+                max_colors is neither 'auto' nor an integer in 0-256.
         """
         if sort_by not in VALID_SORT_OPTIONS:
             raise ValueError(
                 f"sort_by must be one of {VALID_SORT_OPTIONS}, got {sort_by!r}"
             )
-        if not 0 <= max_colors <= 256:
+        if isinstance(max_colors, str):
+            if max_colors != "auto":
+                raise ValueError(
+                    f"max_colors must be 'auto' or an integer 0-256, got {max_colors!r}"
+                )
+        elif (
+            isinstance(max_colors, bool)
+            or not isinstance(max_colors, int)
+            or not 0 <= max_colors <= 256
+        ):
             raise ValueError(
                 f"max_colors must be between 0 and 256, got {max_colors!r}"
             )
@@ -318,40 +353,25 @@ class ImageAnalyzer:
             with Image.open(file_path) as img:
                 original_format = img.format or "UNKNOWN"
                 dimensions = img.size
-
-                if max_colors > 0:
-                    # Quantize to a reduced palette for performance and clarity.
-                    # MEDIANCUT quantizes RGB only, so the original alpha
-                    # channel is reattached afterwards; transparent pixels
-                    # stay transparent instead of becoming opaque black.
-                    rgba = img.convert("RGBA")
-                    rgb_image = rgba.convert("RGB")
-                    # Flatten the RGB payload of fully transparent pixels to a
-                    # single color: invisible pixels then occupy at most one
-                    # palette slot instead of shifting palette boundaries.
-                    transparent_mask = rgba.getchannel("A").point(lambda a: 255 if a == 0 else 0)
-                    rgb_image.paste((0, 0, 0), mask=transparent_mask)
-                    quantized = rgb_image.quantize(colors=max_colors, method=Image.Quantize.MEDIANCUT)
-                    image = quantized.convert("RGB")
-                    image.putalpha(rgba.getchannel("A"))
-                else:
-                    image = img.convert("RGBA")
+                image = img.convert("RGBA")
 
         except (OSError, ValueError, Image.DecompressionBombError) as exc:
             logger.error(f"Error opening {file_path}: {exc}")
             return None
 
-        # Aggregate by RGB value after dropping fully transparent pixels:
-        # alpha only decides whether a pixel is visible, so semi-transparent
-        # variants of one color merge into a single palette entry instead of
-        # appearing as duplicates with split frequencies
-        # (cast: Pillow types get_flattened_data loosely; the image is RGBA
-        # by construction in both branches above)
-        pixels = cast(List[RGBA], image.get_flattened_data())
-        rgb_counts: Counter[RGB] = Counter()
-        for (r, g, b, a), count in Counter(pixels).items():
-            if a > 0:
-                rgb_counts[(r, g, b)] += count
+        if isinstance(max_colors, str):  # "auto", validated above
+            # Bounded probe: the threshold decision must not build a full
+            # Counter over a high-color image first
+            if _unique_visible_exceeds(image, AUTO_PALETTE_THRESHOLD):
+                logger.info(
+                    f"{file_path}: more than {AUTO_PALETTE_THRESHOLD} unique "
+                    f"visible colors, quantizing to {AUTO_PALETTE_SIZE} (auto palette)"
+                )
+                image = _quantize_preserving_alpha(image, AUTO_PALETTE_SIZE)
+        elif max_colors > 0:
+            image = _quantize_preserving_alpha(image, max_colors)
+
+        rgb_counts = _count_visible_rgb(image)
 
         # Sort by frequency descending
         visible_colors = rgb_counts.most_common()
@@ -441,181 +461,21 @@ class ImageAnalyzer:
         Raises:
             ValueError: If output_format is not recognised.
         """
-        if output_format not in VALID_OUTPUT_FORMATS:
-            raise ValueError(
-                f"output_format must be one of {VALID_OUTPUT_FORMATS}, got {output_format!r}"
-            )
-
-        output_dir = Path(output_dir)
-
-        # Mirror subdirectory structure when batch-processing
-        if input_base is not None and file_path is not None:
-            try:
-                rel = file_path.parent.relative_to(input_base)
-                output_dir = output_dir / rel
-            except ValueError:
-                pass  # file_path not under input_base — write flat
-
-        output_dir.mkdir(parents=True, exist_ok=True)
-        stem = f"{_safe_output_stem(image_info.filename)}_analysis"
-
-        if output_format == "json":
-            self._save_json(output_dir / f"{stem}.json", image_info, sort_by)
-        elif output_format == "css":
-            self._save_css(output_dir, image_info)
-        else:
-            self._save_txt(output_dir / f"{stem}.txt", image_info, sort_by)
-
-    def _save_txt(self, output_file: Path, image_info: ImageInfo, sort_by: str) -> None:
-        with output_file.open('w', encoding='utf-8') as f:
-            f.write(f"Image Analysis for {_sanitize_display_name(image_info.filename)}\n")
-            f.write(f"Dimensions: {image_info.dimensions[0]}x{image_info.dimensions[1]}\n")
-            f.write(f"Format: {image_info.format}\n")
-
-            if image_info.dominant_color:
-                f.write(f"Dominant Color: RGB{image_info.dominant_color}\n")
-
-            f.write(f"\nColors (sorted by {sort_by}):\n")
-            for idx, color in enumerate(image_info.colors, 1):
-                f.write(f"\nColor #{idx}:\n")
-                f.write(f"  RGB: {color.rgb}\n")
-                f.write(f"  HEX: {color.hex}\n")
-                f.write(f"  CMYK: {color.cmyk}\n")
-                f.write(f"  Frequency: {color.frequency}%\n")
-
-                if color.harmonies:
-                    f.write("\n  Color Harmonies:\n")
-                    for harmony_type, harmony_colors in color.harmonies.items():
-                        f.write(f"    {harmony_type.capitalize()}:\n")
-                        for harmony_color in harmony_colors:
-                            f.write(f"      RGB{harmony_color}\n")
-
-        logger.info(f"Analysis saved to {output_file}")
-
-    def _save_json(self, output_file: Path, image_info: ImageInfo, sort_by: str) -> None:
-        data = {
-            "filename": image_info.filename,
-            "dimensions": {"width": image_info.dimensions[0], "height": image_info.dimensions[1]},
-            "format": image_info.format,
-            "sorted_by": sort_by,
-            "dominant_color": list(image_info.dominant_color) if image_info.dominant_color else None,
-            "colors": [
-                {
-                    "rgb": list(c.rgb),
-                    "hex": c.hex,
-                    "cmyk": list(c.cmyk),
-                    "frequency": c.frequency,
-                    "harmonies": {k: [list(v) for v in vs] for k, vs in c.harmonies.items()},
-                }
-                for c in image_info.colors
-            ],
-        }
-        with output_file.open('w', encoding='utf-8') as f:
-            json.dump(data, f, indent=2)
-        logger.info(f"Analysis saved to {output_file}")
-
-    def _save_css(self, output_dir: Path, image_info: ImageInfo) -> None:
-        """Save palette as CSS custom properties, W3C Design Tokens, and Tailwind config.
-
-        Three files are written to output_dir:
-        - {filename}_tokens.css   — CSS custom properties
-        - {filename}_tokens.json  — W3C Design Token Community Group format
-        - {filename}_tailwind.js  — Tailwind CSS colors config snippet
-
-        Args:
-            output_dir: Directory to write the three token files into.
-            image_info: ImageInfo object containing the analysis results.
-        """
-        stem = _safe_output_stem(image_info.filename)
-        colors = image_info.colors
-
-        # ── CSS custom properties ─────────────────────────────────────────
-        css_lines = [
-            f"/* Color palette extracted from {stem} by Image Color Analysis Tool */",
-            f"/* {len(colors)} colors, sorted by frequency */",
-            ":root {",
-        ]
-        for idx, color in enumerate(colors, 1):
-            r, g, b = color.rgb
-            css_lines.append(
-                f"  --color-{idx}: {color.hex};  "
-                f"/* RGB({r}, {g}, {b}) · {color.frequency}% */"
-            )
-        if image_info.dominant_color:
-            css_lines.append(f"  --color-dominant: "
-                             f"{ColorConverter.rgb_to_hex(image_info.dominant_color)};")
-        css_lines.append("}")
-        css_file = output_dir / f"{stem}_tokens.css"
-        css_file.write_text("\n".join(css_lines), encoding="utf-8")
-        logger.info(f"CSS tokens saved to {css_file}")
-
-        # ── W3C Design Token Community Group format ───────────────────────
-        # Spec: https://design-tokens.github.io/community-group/format/
-        token_dict: Dict[str, object] = {}
-        for idx, color in enumerate(colors, 1):
-            token_dict[f"color-{idx}"] = {
-                "$type": "color",
-                "$value": color.hex,
-                "$description": (
-                    f"RGB({color.rgb[0]}, {color.rgb[1]}, {color.rgb[2]}) · "
-                    f"{color.frequency}% of image"
-                ),
-            }
-        if image_info.dominant_color:
-            token_dict["color-dominant"] = {
-                "$type": "color",
-                "$value": ColorConverter.rgb_to_hex(image_info.dominant_color),
-                "$description": "Most frequent color in the image",
-            }
-        tokens_wrapper = {
-            "$schema": "https://design-tokens.github.io/community-group/format/",
-            "$metadata": {"source": stem},
-            "palette": token_dict,
-        }
-        tokens_file = output_dir / f"{stem}_tokens.json"
-        tokens_file.write_text(json.dumps(tokens_wrapper, indent=2), encoding="utf-8")
-        logger.info(f"Design tokens saved to {tokens_file}")
-
-        # ── Tailwind CSS colors config snippet ────────────────────────────
-        # The key is derived from the filename and becomes a class-name
-        # fragment, so replace runs of characters invalid in CSS/Tailwind
-        # identifiers (spaces, dots, etc.) with hyphens
-        tw_key = re.sub(r"[^A-Za-z0-9_-]+", "-", stem)
-        tw_entries = [
-            f"  '{idx}': '{color.hex}',  // {color.frequency}%"
-            for idx, color in enumerate(colors, 1)
-        ]
-        if image_info.dominant_color:
-            tw_entries.append(
-                f"  'dominant': '{ColorConverter.rgb_to_hex(image_info.dominant_color)}',"
-            )
-        tw_lines = [
-            f"// Tailwind CSS palette — extracted from {stem}",
-            "// Paste inside the `colors` key of your tailwind.config.js",
-            "module.exports = {",
-            "  theme: {",
-            "    extend: {",
-            "      colors: {",
-            f"        '{tw_key}': {{",
-        ]
-        tw_lines.extend(f"          {e}" for e in tw_entries)
-        tw_lines += [
-            "        },",
-            "      },",
-            "    },",
-            "  },",
-            "};",
-        ]
-        tw_file = output_dir / f"{stem}_tailwind.js"
-        tw_file.write_text("\n".join(tw_lines), encoding="utf-8")
-        logger.info(f"Tailwind config saved to {tw_file}")
+        exporters.save_analysis(
+            output_dir,
+            image_info,
+            sort_by=sort_by,
+            output_format=output_format,
+            input_base=input_base,
+            file_path=file_path,
+        )
 
     def batch_process(
         self,
         input_dir: Union[str, Path],
         output_dir: Union[str, Path],
         sort_by: str = "frequency",
-        max_colors: int = 0,
+        max_colors: Union[int, str] = "auto",
         output_format: str = "txt",
     ) -> None:
         """Process all supported images in a directory recursively.
@@ -625,7 +485,8 @@ class ImageAnalyzer:
             output_dir: Root directory where analysis results will be saved.
                 Subdirectory structure from input_dir is mirrored.
             sort_by: Sorting criterion for colors in each analysis.
-            max_colors: Palette size for quantization (0 = no quantization).
+            max_colors: Palette size control, as in analyze_image ('auto'
+                default, integer 1-256, or 0 for no quantization).
             output_format: 'txt', 'json', or 'css'.
         """
         input_dir = Path(input_dir)

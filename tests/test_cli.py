@@ -86,6 +86,28 @@ class TestBasicInvocation:
         data = json.loads((out / "two.png_analysis.json").read_text())
         assert len(data["colors"]) <= 2
 
+    def test_colors_auto_accepted(self, monkeypatch, red_image, tmp_path):
+        out = tmp_path / "out"
+        run_cli(monkeypatch, red_image, out, "-c", "auto")
+        assert (out / "red.png_analysis.txt").exists()
+
+    def test_colors_invalid_string_rejected(self, monkeypatch, red_image, tmp_path):
+        with pytest.raises(SystemExit) as exc_info:
+            run_cli(monkeypatch, red_image, tmp_path / "out", "-c", "many")
+        assert exc_info.value.code == 2  # argparse parser.error
+
+    def test_default_is_auto_and_bounded(self, monkeypatch, tmp_path):
+        # No -c flag on a 1024-color image: auto must bound the palette
+        img = Image.new("RGB", (32, 32))
+        for i in range(1024):
+            img.putpixel((i % 32, i // 32), (i % 256, i // 256, (i * 7) % 256))
+        path = tmp_path / "colorful.png"
+        img.save(path)
+        out = tmp_path / "out"
+        run_cli(monkeypatch, path, out, "-f", "json")
+        data = json.loads((out / "colorful.png_analysis.json").read_text())
+        assert len(data["colors"]) <= 32
+
     def test_verbose_flag(self, monkeypatch, red_image, tmp_path):
         out = tmp_path / "out"
         run_cli(monkeypatch, red_image, out, "-v")

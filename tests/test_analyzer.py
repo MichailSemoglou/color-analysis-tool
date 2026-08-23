@@ -56,6 +56,17 @@ def fully_transparent_image(tmp_path):
     return path
 
 
+@pytest.fixture
+def high_color_image(tmp_path):
+    """A 32x32 RGB image with 1024 unique colors (above the auto threshold)."""
+    img = Image.new("RGB", (32, 32))
+    for i in range(1024):
+        img.putpixel((i % 32, i // 32), (i % 256, i // 256, (i * 7) % 256))
+    path = tmp_path / "high_color.png"
+    img.save(path)
+    return path
+
+
 # ── analyze_image ────────────────────────────────────────────────────────────
 
 class TestAnalyzeImage:
@@ -109,6 +120,11 @@ class TestAnalyzeImage:
     def test_max_colors_negative_raises(self, analyzer, red_image):
         with pytest.raises(ValueError, match="max_colors"):
             analyzer.analyze_image(red_image, max_colors=-1)
+
+    def test_max_colors_fractional_raises(self, analyzer, red_image):
+        # 1.5 passes a bare range check but is not a valid palette size
+        with pytest.raises(ValueError, match="max_colors"):
+            analyzer.analyze_image(red_image, max_colors=1.5)
 
     def test_missing_file_returns_none(self, analyzer, tmp_path):
         result = analyzer.analyze_image(tmp_path / "nonexistent.png")
@@ -308,6 +324,13 @@ class TestSaveAnalysisCss:
         analyzer.save_analysis(tmp_path, info, output_format="css")
         content = (tmp_path / "red.png_tokens.css").read_text()
         assert "--color-dominant:" in content
+
+    def test_css_records_sort_order(self, analyzer, two_color_image, tmp_path):
+        # Regression: the CSS header must record the actual sort criterion
+        info = analyzer.analyze_image(two_color_image, sort_by="hue")
+        analyzer.save_analysis(tmp_path, info, sort_by="hue", output_format="css")
+        content = (tmp_path / "two_color.png_tokens.css").read_text()
+        assert "sorted by hue" in content
 
     def test_tokens_json_is_valid(self, analyzer, red_image, tmp_path):
         info = analyzer.analyze_image(red_image)
@@ -598,14 +621,14 @@ class TestFilenameSanitization:
     def test_comment_terminator_and_control_chars_stripped(self):
         # Filenames cannot contain '/', so */ is defense in depth; control
         # characters are reachable on POSIX filesystems
-        from color_analysis_tool.analyzer import _sanitize_display_name
+        from color_analysis_tool.exporters import _sanitize_display_name
         assert _sanitize_display_name("evil*/inject.png") == "evilinject.png"
         assert _sanitize_display_name("a\x07b\x1b.png") == "ab.png"
         assert _sanitize_display_name("plain.png") == "plain.png"
 
     def test_output_stem_unchanged_for_clean_names(self):
         # Normal filenames keep their familiar output names, no digest
-        from color_analysis_tool.analyzer import _safe_output_stem
+        from color_analysis_tool.exporters import _safe_output_stem
         assert _safe_output_stem("photo.png") == "photo.png"
 
     def test_output_stem_collision_resistant(self, analyzer, tmp_path):
@@ -624,11 +647,33 @@ class TestFilenameSanitization:
         assert "\\" not in produced.name
         assert produced.name.startswith("dir-evil.png-")
 
+    def test_output_stem_cannot_traverse(self, analyzer, tmp_path):
+        # Synthetic ImageInfo filenames never touched a disk, so they can
+        # carry separators; output paths must stay inside output_dir
+        analyzer.save_analysis(tmp_path, self._info("../../outside.png"))
+        analyzer.save_analysis(tmp_path, self._info("/abs/path.png"))
+        produced = list(tmp_path.glob("*_analysis.txt"))
+        assert len(produced) == 2
+        for path in produced:
+            assert path.parent == tmp_path
+            assert "/" not in path.name and "\\" not in path.name
+
+    def test_output_stem_replaces_windows_invalid_chars(self, analyzer, tmp_path):
+        # A colon makes a name drive-relative on Windows and addresses NTFS
+        # alternate data streams; it must not survive into the output name
+        analyzer.save_analysis(tmp_path, self._info("C:escape.png"))
+        analyzer.save_analysis(tmp_path, self._info("name:stream.png"))
+        produced = list(tmp_path.glob("*_analysis.txt"))
+        assert len(produced) == 2
+        for path in produced:
+            assert path.parent == tmp_path
+            assert ":" not in path.name
+
     def test_non_utf8_filename_digest_does_not_raise(self):
         # Regression: POSIX filenames may carry non-UTF-8 bytes, surfaced as
         # surrogate escapes; os.fsencode round-trips them where strict UTF-8
         # encoding would raise UnicodeEncodeError and abort the batch
-        from color_analysis_tool.analyzer import _safe_output_stem
+        from color_analysis_tool.exporters import _safe_output_stem
         name = os.fsdecode(b"bad-\xff.png")
         stem = _safe_output_stem(name)
         assert stem == _safe_output_stem(name)  # deterministic
@@ -649,3 +694,115 @@ class TestDecompressionBombGuard:
         # oversized image instead of skipping it
         monkeypatch.setattr(Image, "MAX_IMAGE_PIXELS", 10)
         assert analyzer.analyze_image(red_image) is None
+
+
+# ── automatic palette sizing (max_colors="auto") ─────────────────────────────
+
+class TestAutoPalette:
+    def test_auto_quantizes_high_color_image(self, analyzer, high_color_image):
+        # 1024 unique colors exceeds the 256 threshold: auto must bound it
+        result = analyzer.analyze_image(high_color_image)
+        assert result is not None
+        assert len(result.colors) <= 32
+        assert result.dominant_color is not None
+
+    def test_auto_preserves_low_color_image(self, analyzer, two_color_image):
+        # Under the threshold, auto analyzes every unique color faithfully
+        result = analyzer.analyze_image(two_color_image)
+        assert len(result.colors) == 2
+        assert abs(sum(c.frequency for c in result.colors) - 100.0) < 0.1
+
+    def test_zero_disables_quantization(self, analyzer, high_color_image):
+        # 0 is the explicit opt-out: unbounded palette
+        result = analyzer.analyze_image(high_color_image, max_colors=0)
+        assert len(result.colors) == 1024
+
+    def test_invalid_string_raises(self, analyzer, red_image):
+        with pytest.raises(ValueError, match="max_colors"):
+            analyzer.analyze_image(red_image, max_colors="lots")
+
+    def test_auto_threshold_boundary(self, analyzer, tmp_path):
+        # Exactly 256 unique colors are kept faithful; 257 triggers the bound
+        img = Image.new("RGB", (16, 16))
+        for i in range(256):
+            img.putpixel((i % 16, i // 16), (i, 0, 0))
+        path = tmp_path / "exactly_256.png"
+        img.save(path)
+        result = analyzer.analyze_image(path)
+        assert len(result.colors) == 256
+
+        img_over = Image.new("RGB", (16, 17))
+        for i in range(256):
+            img_over.putpixel((i % 16, i // 16), (i, 0, 0))
+        for x in range(16):
+            img_over.putpixel((x, 16), (255, 255, 255))
+        path_over = tmp_path / "over_256.png"
+        img_over.save(path_over)
+        result_over = analyzer.analyze_image(path_over)
+        assert len(result_over.colors) <= 32
+
+
+# ── exporter output cap ──────────────────────────────────────────────────────
+
+def _multi_color_info(n, filename="multi.png"):
+    """Build a synthetic ImageInfo with n distinct colors."""
+    colors = []
+    for i in range(n):
+        # Encode the index across all three channels so every component
+        # stays within 0-255 even for n above 256
+        rgb = (i % 256, (i // 256) % 256, (i // 65536) % 256)
+        colors.append(ColorInfo(
+            rgb=rgb,
+            hex=ColorConverter.rgb_to_hex(rgb),
+            cmyk=ColorConverter.rgb_to_cmyk(*rgb),
+            frequency=round(100 / n, 2),
+            harmonies={},
+        ))
+    return ImageInfo(
+        filename=filename,
+        dimensions=(10, 10),
+        format="PNG",
+        colors=colors,
+        dominant_color=(0, 0, 0),
+    )
+
+
+class TestOutputTruncation:
+    def test_txt_note_and_cap(self, analyzer, tmp_path, monkeypatch):
+        monkeypatch.setattr("color_analysis_tool.exporters.MAX_OUTPUT_COLORS", 2)
+        analyzer.save_analysis(tmp_path, _multi_color_info(5))
+        content = (tmp_path / "multi.png_analysis.txt").read_text()
+        assert "truncated to the first 2 of 5 colors" in content
+        assert content.count("Color #") == 2
+
+    def test_json_truncated_from_key(self, analyzer, tmp_path, monkeypatch):
+        monkeypatch.setattr("color_analysis_tool.exporters.MAX_OUTPUT_COLORS", 2)
+        analyzer.save_analysis(tmp_path, _multi_color_info(5), output_format="json")
+        data = json.loads((tmp_path / "multi.png_analysis.json").read_text())
+        assert data["truncated_from"] == 5
+        assert len(data["colors"]) == 2
+
+    def test_json_no_key_when_under_cap(self, analyzer, tmp_path, monkeypatch):
+        monkeypatch.setattr("color_analysis_tool.exporters.MAX_OUTPUT_COLORS", 10)
+        analyzer.save_analysis(tmp_path, _multi_color_info(5), output_format="json")
+        data = json.loads((tmp_path / "multi.png_analysis.json").read_text())
+        assert "truncated_from" not in data
+        assert len(data["colors"]) == 5
+
+    def test_css_notes_and_cap(self, analyzer, tmp_path, monkeypatch):
+        monkeypatch.setattr("color_analysis_tool.exporters.MAX_OUTPUT_COLORS", 2)
+        analyzer.save_analysis(tmp_path, _multi_color_info(5), output_format="css")
+        css = (tmp_path / "multi.png_tokens.css").read_text()
+        js = (tmp_path / "multi.png_tailwind.js").read_text()
+        tokens = json.loads((tmp_path / "multi.png_tokens.json").read_text())
+        assert "truncated to the first 2 of 5 colors" in css
+        assert "truncated to the first 2 of 5 colors" in js
+        assert tokens["$metadata"]["truncated_from"] == 5
+        assert css.count("--color-") == 3  # 2 capped colors + dominant
+
+    def test_default_cap_applies_at_1000(self, analyzer, tmp_path):
+        # The built-in 1000-color cap guards output without any patching
+        analyzer.save_analysis(tmp_path, _multi_color_info(1200), output_format="json")
+        data = json.loads((tmp_path / "multi.png_analysis.json").read_text())
+        assert data["truncated_from"] == 1200
+        assert len(data["colors"]) == 1000
