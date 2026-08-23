@@ -12,7 +12,7 @@ import logging
 from collections import Counter
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple, Union, cast
+from typing import Dict, Iterable, List, Optional, Tuple, Union, cast
 
 from PIL import Image
 from tqdm import tqdm
@@ -66,13 +66,31 @@ def _count_visible_rgb(image: Image.Image) -> "Counter[RGB]":
     variants of one color merge into a single count instead of appearing
     as duplicates with split frequencies.
     """
-    # cast: Pillow types get_flattened_data loosely; callers pass RGBA images
-    pixels = cast(List[RGBA], image.get_flattened_data())
+    # cast: Pillow types get_flattened_data loosely; callers pass RGBA
+    # images. Counter consumes the iterable directly, so no full pixel
+    # list is ever materialized.
+    pixels = cast(Iterable[RGBA], image.get_flattened_data())
     counts: Counter[RGB] = Counter()
     for (r, g, b, a), count in Counter(pixels).items():
         if a > 0:
             counts[(r, g, b)] += count
     return counts
+
+
+def _unique_visible_exceeds(image: Image.Image, threshold: int) -> bool:
+    """Return True when an image has more than threshold unique visible colors.
+
+    Bounded probe for the auto-palette decision: it stops at threshold + 1
+    unique colors, so its memory cost does not scale with the number of
+    colors in the image.
+    """
+    seen = set()
+    for r, g, b, a in cast(Iterable[RGBA], image.get_flattened_data()):
+        if a > 0:
+            seen.add((r, g, b))
+            if len(seen) > threshold:
+                return True
+    return False
 
 
 def _quantize_preserving_alpha(image: Image.Image, colors: int) -> Image.Image:
@@ -321,7 +339,11 @@ class ImageAnalyzer:
                 raise ValueError(
                     f"max_colors must be 'auto' or an integer 0-256, got {max_colors!r}"
                 )
-        elif isinstance(max_colors, bool) or not 0 <= max_colors <= 256:
+        elif (
+            isinstance(max_colors, bool)
+            or not isinstance(max_colors, int)
+            or not 0 <= max_colors <= 256
+        ):
             raise ValueError(
                 f"max_colors must be between 0 and 256, got {max_colors!r}"
             )
@@ -337,20 +359,19 @@ class ImageAnalyzer:
             logger.error(f"Error opening {file_path}: {exc}")
             return None
 
-        # An explicit palette size quantizes first and counts once; "auto"
-        # needs the unquantized unique-color count for its threshold decision
-        if not isinstance(max_colors, str) and max_colors > 0:
+        if isinstance(max_colors, str):  # "auto", validated above
+            # Bounded probe: the threshold decision must not build a full
+            # Counter over a high-color image first
+            if _unique_visible_exceeds(image, AUTO_PALETTE_THRESHOLD):
+                logger.info(
+                    f"{file_path}: more than {AUTO_PALETTE_THRESHOLD} unique "
+                    f"visible colors, quantizing to {AUTO_PALETTE_SIZE} (auto palette)"
+                )
+                image = _quantize_preserving_alpha(image, AUTO_PALETTE_SIZE)
+        elif max_colors > 0:
             image = _quantize_preserving_alpha(image, max_colors)
 
         rgb_counts = _count_visible_rgb(image)
-
-        if isinstance(max_colors, str) and len(rgb_counts) > AUTO_PALETTE_THRESHOLD:
-            logger.info(
-                f"{file_path}: {len(rgb_counts)} unique visible colors, "
-                f"quantizing to {AUTO_PALETTE_SIZE} (auto palette)"
-            )
-            image = _quantize_preserving_alpha(image, AUTO_PALETTE_SIZE)
-            rgb_counts = _count_visible_rgb(image)
 
         # Sort by frequency descending
         visible_colors = rgb_counts.most_common()

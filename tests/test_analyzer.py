@@ -121,6 +121,11 @@ class TestAnalyzeImage:
         with pytest.raises(ValueError, match="max_colors"):
             analyzer.analyze_image(red_image, max_colors=-1)
 
+    def test_max_colors_fractional_raises(self, analyzer, red_image):
+        # 1.5 passes a bare range check but is not a valid palette size
+        with pytest.raises(ValueError, match="max_colors"):
+            analyzer.analyze_image(red_image, max_colors=1.5)
+
     def test_missing_file_returns_none(self, analyzer, tmp_path):
         result = analyzer.analyze_image(tmp_path / "nonexistent.png")
         assert result is None
@@ -642,6 +647,17 @@ class TestFilenameSanitization:
         assert "\\" not in produced.name
         assert produced.name.startswith("dir-evil.png-")
 
+    def test_output_stem_cannot_traverse(self, analyzer, tmp_path):
+        # Synthetic ImageInfo filenames never touched a disk, so they can
+        # carry separators; output paths must stay inside output_dir
+        analyzer.save_analysis(tmp_path, self._info("../../outside.png"))
+        analyzer.save_analysis(tmp_path, self._info("/abs/path.png"))
+        produced = list(tmp_path.glob("*_analysis.txt"))
+        assert len(produced) == 2
+        for path in produced:
+            assert path.parent == tmp_path
+            assert "/" not in path.name and "\\" not in path.name
+
     def test_non_utf8_filename_digest_does_not_raise(self):
         # Regression: POSIX filenames may carry non-UTF-8 bytes, surfaced as
         # surrogate escapes; os.fsencode round-trips them where strict UTF-8
@@ -694,21 +710,43 @@ class TestAutoPalette:
         with pytest.raises(ValueError, match="max_colors"):
             analyzer.analyze_image(red_image, max_colors="lots")
 
+    def test_auto_threshold_boundary(self, analyzer, tmp_path):
+        # Exactly 256 unique colors are kept faithful; 257 triggers the bound
+        img = Image.new("RGB", (16, 16))
+        for i in range(256):
+            img.putpixel((i % 16, i // 16), (i, 0, 0))
+        path = tmp_path / "exactly_256.png"
+        img.save(path)
+        result = analyzer.analyze_image(path)
+        assert len(result.colors) == 256
+
+        img_over = Image.new("RGB", (16, 17))
+        for i in range(256):
+            img_over.putpixel((i % 16, i // 16), (i, 0, 0))
+        for x in range(16):
+            img_over.putpixel((x, 16), (255, 255, 255))
+        path_over = tmp_path / "over_256.png"
+        img_over.save(path_over)
+        result_over = analyzer.analyze_image(path_over)
+        assert len(result_over.colors) <= 32
+
 
 # ── exporter output cap ──────────────────────────────────────────────────────
 
 def _multi_color_info(n, filename="multi.png"):
     """Build a synthetic ImageInfo with n distinct colors."""
-    colors = [
-        ColorInfo(
-            rgb=(i, 0, 0),
-            hex=f"#{i:02x}0000",
-            cmyk=ColorConverter.rgb_to_cmyk(i, 0, 0),
+    colors = []
+    for i in range(n):
+        # Encode the index across all three channels so every component
+        # stays within 0-255 even for n above 256
+        rgb = (i % 256, (i // 256) % 256, (i // 65536) % 256)
+        colors.append(ColorInfo(
+            rgb=rgb,
+            hex=ColorConverter.rgb_to_hex(rgb),
+            cmyk=ColorConverter.rgb_to_cmyk(*rgb),
             frequency=round(100 / n, 2),
             harmonies={},
-        )
-        for i in range(n)
-    ]
+        ))
     return ImageInfo(
         filename=filename,
         dimensions=(10, 10),
@@ -750,3 +788,10 @@ class TestOutputTruncation:
         assert "truncated to the first 2 of 5 colors" in js
         assert tokens["$metadata"]["truncated_from"] == 5
         assert css.count("--color-") == 3  # 2 capped colors + dominant
+
+    def test_default_cap_applies_at_1000(self, analyzer, tmp_path):
+        # The built-in 1000-color cap guards output without any patching
+        analyzer.save_analysis(tmp_path, _multi_color_info(1200), output_format="json")
+        data = json.loads((tmp_path / "multi.png_analysis.json").read_text())
+        assert data["truncated_from"] == 1200
+        assert len(data["colors"]) == 1000
