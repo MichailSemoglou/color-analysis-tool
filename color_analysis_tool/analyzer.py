@@ -14,7 +14,7 @@ import logging
 import os
 import re
 from collections import Counter
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple, Union, cast
 
@@ -41,6 +41,14 @@ VALID_OUTPUT_FORMATS = {"txt", "json", "css"}
 
 # Number of top colors for which harmonies are computed
 HARMONY_LIMIT = 50
+
+# Automatic palette bounds used when max_colors="auto": analyze every unique
+# visible color up to the threshold, quantize to the palette size beyond it
+AUTO_PALETTE_THRESHOLD = 256
+AUTO_PALETTE_SIZE = 32
+
+# Hard cap on colors written by any exporter (safety valve for max_colors=0)
+MAX_OUTPUT_COLORS = 1000
 
 
 def _validate_rgb(rgb: Tuple[int, ...], func_name: str) -> None:
@@ -83,6 +91,40 @@ def _safe_output_stem(name: str) -> str:
         digest = hashlib.sha256(os.fsencode(name)).hexdigest()[:8]
         safe = f"{safe}-{digest}"
     return safe
+
+
+def _count_visible_rgb(image: Image.Image) -> "Counter[RGB]":
+    """Count pixels by RGB value, dropping fully transparent pixels.
+
+    Alpha only decides whether a pixel is visible, so semi-transparent
+    variants of one color merge into a single count instead of appearing
+    as duplicates with split frequencies.
+    """
+    # cast: Pillow types get_flattened_data loosely; callers pass RGBA images
+    pixels = cast(List[RGBA], image.get_flattened_data())
+    counts: Counter[RGB] = Counter()
+    for (r, g, b, a), count in Counter(pixels).items():
+        if a > 0:
+            counts[(r, g, b)] += count
+    return counts
+
+
+def _quantize_preserving_alpha(image: Image.Image, colors: int) -> Image.Image:
+    """Quantize an RGBA image to at most colors colors, preserving alpha.
+
+    MEDIANCUT quantizes RGB only, so the alpha channel is reattached
+    afterwards. The RGB payload of fully transparent pixels is flattened to
+    a single color first: invisible pixels then occupy at most one palette
+    slot instead of shifting palette boundaries.
+    """
+    rgba = image.convert("RGBA")
+    rgb_image = rgba.convert("RGB")
+    transparent_mask = rgba.getchannel("A").point(lambda a: 255 if a == 0 else 0)
+    rgb_image.paste((0, 0, 0), mask=transparent_mask)
+    quantized = rgb_image.quantize(colors=colors, method=Image.Quantize.MEDIANCUT)
+    result = quantized.convert("RGB")
+    result.putalpha(rgba.getchannel("A"))
+    return result
 
 
 @dataclass
@@ -280,7 +322,7 @@ class ImageAnalyzer:
         self,
         file_path: Union[str, Path],
         sort_by: str = "frequency",
-        max_colors: int = 0,
+        max_colors: Union[int, str] = "auto",
     ) -> Optional[ImageInfo]:
         """Analyze colors in an image file.
 
@@ -288,11 +330,11 @@ class ImageAnalyzer:
             file_path: Path to the image file
             sort_by: Sorting criterion for colors. One of:
                 'frequency' (default), 'hue', 'saturation', 'brightness'
-            max_colors: Maximum number of colors to include in results.
-                Use 0 (default) for all colors. When > 0 the image is
-                first quantized to that palette size, which both speeds
-                up processing and produces a clean, meaningful palette.
-                Must be between 0 and 256.
+            max_colors: Palette size control. 'auto' (default) analyzes every
+                unique visible color when there are at most 256, and otherwise
+                quantizes to a bounded 32-color palette. An integer N (1-256)
+                always quantizes to that palette size; 0 disables quantization
+                entirely (unbounded output).
 
         Returns:
             ImageInfo object containing analysis results, or None if analysis
@@ -302,13 +344,18 @@ class ImageAnalyzer:
 
         Raises:
             ValueError: If sort_by is not a recognised sort option, or if
-                max_colors is outside the range 0-256.
+                max_colors is neither 'auto' nor an integer in 0-256.
         """
         if sort_by not in VALID_SORT_OPTIONS:
             raise ValueError(
                 f"sort_by must be one of {VALID_SORT_OPTIONS}, got {sort_by!r}"
             )
-        if not 0 <= max_colors <= 256:
+        if isinstance(max_colors, str):
+            if max_colors != "auto":
+                raise ValueError(
+                    f"max_colors must be 'auto' or an integer 0-256, got {max_colors!r}"
+                )
+        elif isinstance(max_colors, bool) or not 0 <= max_colors <= 256:
             raise ValueError(
                 f"max_colors must be between 0 and 256, got {max_colors!r}"
             )
@@ -318,40 +365,25 @@ class ImageAnalyzer:
             with Image.open(file_path) as img:
                 original_format = img.format or "UNKNOWN"
                 dimensions = img.size
-
-                if max_colors > 0:
-                    # Quantize to a reduced palette for performance and clarity.
-                    # MEDIANCUT quantizes RGB only, so the original alpha
-                    # channel is reattached afterwards; transparent pixels
-                    # stay transparent instead of becoming opaque black.
-                    rgba = img.convert("RGBA")
-                    rgb_image = rgba.convert("RGB")
-                    # Flatten the RGB payload of fully transparent pixels to a
-                    # single color: invisible pixels then occupy at most one
-                    # palette slot instead of shifting palette boundaries.
-                    transparent_mask = rgba.getchannel("A").point(lambda a: 255 if a == 0 else 0)
-                    rgb_image.paste((0, 0, 0), mask=transparent_mask)
-                    quantized = rgb_image.quantize(colors=max_colors, method=Image.Quantize.MEDIANCUT)
-                    image = quantized.convert("RGB")
-                    image.putalpha(rgba.getchannel("A"))
-                else:
-                    image = img.convert("RGBA")
+                image = img.convert("RGBA")
 
         except (OSError, ValueError, Image.DecompressionBombError) as exc:
             logger.error(f"Error opening {file_path}: {exc}")
             return None
 
-        # Aggregate by RGB value after dropping fully transparent pixels:
-        # alpha only decides whether a pixel is visible, so semi-transparent
-        # variants of one color merge into a single palette entry instead of
-        # appearing as duplicates with split frequencies
-        # (cast: Pillow types get_flattened_data loosely; the image is RGBA
-        # by construction in both branches above)
-        pixels = cast(List[RGBA], image.get_flattened_data())
-        rgb_counts: Counter[RGB] = Counter()
-        for (r, g, b, a), count in Counter(pixels).items():
-            if a > 0:
-                rgb_counts[(r, g, b)] += count
+        rgb_counts = _count_visible_rgb(image)
+
+        if isinstance(max_colors, str):  # "auto", validated above
+            if len(rgb_counts) > AUTO_PALETTE_THRESHOLD:
+                logger.info(
+                    f"{file_path}: {len(rgb_counts)} unique visible colors, "
+                    f"quantizing to {AUTO_PALETTE_SIZE} (auto palette)"
+                )
+                image = _quantize_preserving_alpha(image, AUTO_PALETTE_SIZE)
+                rgb_counts = _count_visible_rgb(image)
+        elif max_colors > 0:
+            image = _quantize_preserving_alpha(image, max_colors)
+            rgb_counts = _count_visible_rgb(image)
 
         # Sort by frequency descending
         visible_colors = rgb_counts.most_common()
@@ -457,16 +489,34 @@ class ImageAnalyzer:
                 pass  # file_path not under input_base — write flat
 
         output_dir.mkdir(parents=True, exist_ok=True)
+
+        # Safety valve: bound exporter output even for unbounded analyses
+        # (max_colors=0 on a high-color image)
+        truncated_from: Optional[int] = None
+        if len(image_info.colors) > MAX_OUTPUT_COLORS:
+            truncated_from = len(image_info.colors)
+            logger.warning(
+                f"Truncating output to the first {MAX_OUTPUT_COLORS} of "
+                f"{truncated_from} colors; use max_colors to bound the palette"
+            )
+            image_info = replace(image_info, colors=image_info.colors[:MAX_OUTPUT_COLORS])
+
         stem = f"{_safe_output_stem(image_info.filename)}_analysis"
 
         if output_format == "json":
-            self._save_json(output_dir / f"{stem}.json", image_info, sort_by)
+            self._save_json(output_dir / f"{stem}.json", image_info, sort_by, truncated_from)
         elif output_format == "css":
-            self._save_css(output_dir, image_info)
+            self._save_css(output_dir, image_info, truncated_from)
         else:
-            self._save_txt(output_dir / f"{stem}.txt", image_info, sort_by)
+            self._save_txt(output_dir / f"{stem}.txt", image_info, sort_by, truncated_from)
 
-    def _save_txt(self, output_file: Path, image_info: ImageInfo, sort_by: str) -> None:
+    def _save_txt(
+        self,
+        output_file: Path,
+        image_info: ImageInfo,
+        sort_by: str,
+        truncated_from: Optional[int] = None,
+    ) -> None:
         with output_file.open('w', encoding='utf-8') as f:
             f.write(f"Image Analysis for {_sanitize_display_name(image_info.filename)}\n")
             f.write(f"Dimensions: {image_info.dimensions[0]}x{image_info.dimensions[1]}\n")
@@ -474,6 +524,12 @@ class ImageAnalyzer:
 
             if image_info.dominant_color:
                 f.write(f"Dominant Color: RGB{image_info.dominant_color}\n")
+
+            if truncated_from:
+                f.write(
+                    f"Note: truncated to the first {MAX_OUTPUT_COLORS} "
+                    f"of {truncated_from} colors.\n"
+                )
 
             f.write(f"\nColors (sorted by {sort_by}):\n")
             for idx, color in enumerate(image_info.colors, 1):
@@ -492,8 +548,14 @@ class ImageAnalyzer:
 
         logger.info(f"Analysis saved to {output_file}")
 
-    def _save_json(self, output_file: Path, image_info: ImageInfo, sort_by: str) -> None:
-        data = {
+    def _save_json(
+        self,
+        output_file: Path,
+        image_info: ImageInfo,
+        sort_by: str,
+        truncated_from: Optional[int] = None,
+    ) -> None:
+        data: Dict[str, object] = {
             "filename": image_info.filename,
             "dimensions": {"width": image_info.dimensions[0], "height": image_info.dimensions[1]},
             "format": image_info.format,
@@ -510,11 +572,18 @@ class ImageAnalyzer:
                 for c in image_info.colors
             ],
         }
+        if truncated_from:
+            data["truncated_from"] = truncated_from
         with output_file.open('w', encoding='utf-8') as f:
             json.dump(data, f, indent=2)
         logger.info(f"Analysis saved to {output_file}")
 
-    def _save_css(self, output_dir: Path, image_info: ImageInfo) -> None:
+    def _save_css(
+        self,
+        output_dir: Path,
+        image_info: ImageInfo,
+        truncated_from: Optional[int] = None,
+    ) -> None:
         """Save palette as CSS custom properties, W3C Design Tokens, and Tailwind config.
 
         Three files are written to output_dir:
@@ -525,6 +594,8 @@ class ImageAnalyzer:
         Args:
             output_dir: Directory to write the three token files into.
             image_info: ImageInfo object containing the analysis results.
+            truncated_from: When set, the original color count before
+                truncation; a note is recorded in all three files.
         """
         stem = _safe_output_stem(image_info.filename)
         colors = image_info.colors
@@ -533,8 +604,13 @@ class ImageAnalyzer:
         css_lines = [
             f"/* Color palette extracted from {stem} by Image Color Analysis Tool */",
             f"/* {len(colors)} colors, sorted by frequency */",
-            ":root {",
         ]
+        if truncated_from:
+            css_lines.append(
+                f"/* Note: truncated to the first {MAX_OUTPUT_COLORS} "
+                f"of {truncated_from} colors */"
+            )
+        css_lines.append(":root {")
         for idx, color in enumerate(colors, 1):
             r, g, b = color.rgb
             css_lines.append(
@@ -567,9 +643,12 @@ class ImageAnalyzer:
                 "$value": ColorConverter.rgb_to_hex(image_info.dominant_color),
                 "$description": "Most frequent color in the image",
             }
+        metadata: Dict[str, object] = {"source": stem}
+        if truncated_from:
+            metadata["truncated_from"] = truncated_from
         tokens_wrapper = {
             "$schema": "https://design-tokens.github.io/community-group/format/",
-            "$metadata": {"source": stem},
+            "$metadata": metadata,
             "palette": token_dict,
         }
         tokens_file = output_dir / f"{stem}_tokens.json"
@@ -592,6 +671,13 @@ class ImageAnalyzer:
         tw_lines = [
             f"// Tailwind CSS palette — extracted from {stem}",
             "// Paste inside the `colors` key of your tailwind.config.js",
+        ]
+        if truncated_from:
+            tw_lines.append(
+                f"// Note: truncated to the first {MAX_OUTPUT_COLORS} "
+                f"of {truncated_from} colors"
+            )
+        tw_lines += [
             "module.exports = {",
             "  theme: {",
             "    extend: {",
@@ -615,7 +701,7 @@ class ImageAnalyzer:
         input_dir: Union[str, Path],
         output_dir: Union[str, Path],
         sort_by: str = "frequency",
-        max_colors: int = 0,
+        max_colors: Union[int, str] = "auto",
         output_format: str = "txt",
     ) -> None:
         """Process all supported images in a directory recursively.
@@ -625,7 +711,8 @@ class ImageAnalyzer:
             output_dir: Root directory where analysis results will be saved.
                 Subdirectory structure from input_dir is mirrored.
             sort_by: Sorting criterion for colors in each analysis.
-            max_colors: Palette size for quantization (0 = no quantization).
+            max_colors: Palette size control, as in analyze_image ('auto'
+                default, integer 1-256, or 0 for no quantization).
             output_format: 'txt', 'json', or 'css'.
         """
         input_dir = Path(input_dir)

@@ -56,6 +56,17 @@ def fully_transparent_image(tmp_path):
     return path
 
 
+@pytest.fixture
+def high_color_image(tmp_path):
+    """A 32x32 RGB image with 1024 unique colors (above the auto threshold)."""
+    img = Image.new("RGB", (32, 32))
+    for i in range(1024):
+        img.putpixel((i % 32, i // 32), (i % 256, i // 256, (i * 7) % 256))
+    path = tmp_path / "high_color.png"
+    img.save(path)
+    return path
+
+
 # ── analyze_image ────────────────────────────────────────────────────────────
 
 class TestAnalyzeImage:
@@ -649,3 +660,86 @@ class TestDecompressionBombGuard:
         # oversized image instead of skipping it
         monkeypatch.setattr(Image, "MAX_IMAGE_PIXELS", 10)
         assert analyzer.analyze_image(red_image) is None
+
+
+# ── automatic palette sizing (max_colors="auto") ─────────────────────────────
+
+class TestAutoPalette:
+    def test_auto_quantizes_high_color_image(self, analyzer, high_color_image):
+        # 1024 unique colors exceeds the 256 threshold: auto must bound it
+        result = analyzer.analyze_image(high_color_image)
+        assert result is not None
+        assert len(result.colors) <= 32
+        assert result.dominant_color is not None
+
+    def test_auto_preserves_low_color_image(self, analyzer, two_color_image):
+        # Under the threshold, auto analyzes every unique color faithfully
+        result = analyzer.analyze_image(two_color_image)
+        assert len(result.colors) == 2
+        assert abs(sum(c.frequency for c in result.colors) - 100.0) < 0.1
+
+    def test_zero_disables_quantization(self, analyzer, high_color_image):
+        # 0 is the explicit opt-out: unbounded palette
+        result = analyzer.analyze_image(high_color_image, max_colors=0)
+        assert len(result.colors) == 1024
+
+    def test_invalid_string_raises(self, analyzer, red_image):
+        with pytest.raises(ValueError, match="max_colors"):
+            analyzer.analyze_image(red_image, max_colors="lots")
+
+
+# ── exporter output cap ──────────────────────────────────────────────────────
+
+def _multi_color_info(n, filename="multi.png"):
+    """Build a synthetic ImageInfo with n distinct colors."""
+    colors = [
+        ColorInfo(
+            rgb=(i, 0, 0),
+            hex=f"#{i:02x}0000",
+            cmyk=ColorConverter.rgb_to_cmyk(i, 0, 0),
+            frequency=round(100 / n, 2),
+            harmonies={},
+        )
+        for i in range(n)
+    ]
+    return ImageInfo(
+        filename=filename,
+        dimensions=(10, 10),
+        format="PNG",
+        colors=colors,
+        dominant_color=(0, 0, 0),
+    )
+
+
+class TestOutputTruncation:
+    def test_txt_note_and_cap(self, analyzer, tmp_path, monkeypatch):
+        monkeypatch.setattr("color_analysis_tool.analyzer.MAX_OUTPUT_COLORS", 2)
+        analyzer.save_analysis(tmp_path, _multi_color_info(5))
+        content = (tmp_path / "multi.png_analysis.txt").read_text()
+        assert "truncated to the first 2 of 5 colors" in content
+        assert content.count("Color #") == 2
+
+    def test_json_truncated_from_key(self, analyzer, tmp_path, monkeypatch):
+        monkeypatch.setattr("color_analysis_tool.analyzer.MAX_OUTPUT_COLORS", 2)
+        analyzer.save_analysis(tmp_path, _multi_color_info(5), output_format="json")
+        data = json.loads((tmp_path / "multi.png_analysis.json").read_text())
+        assert data["truncated_from"] == 5
+        assert len(data["colors"]) == 2
+
+    def test_json_no_key_when_under_cap(self, analyzer, tmp_path, monkeypatch):
+        monkeypatch.setattr("color_analysis_tool.analyzer.MAX_OUTPUT_COLORS", 10)
+        analyzer.save_analysis(tmp_path, _multi_color_info(5), output_format="json")
+        data = json.loads((tmp_path / "multi.png_analysis.json").read_text())
+        assert "truncated_from" not in data
+        assert len(data["colors"]) == 5
+
+    def test_css_notes_and_cap(self, analyzer, tmp_path, monkeypatch):
+        monkeypatch.setattr("color_analysis_tool.analyzer.MAX_OUTPUT_COLORS", 2)
+        analyzer.save_analysis(tmp_path, _multi_color_info(5), output_format="css")
+        css = (tmp_path / "multi.png_tokens.css").read_text()
+        js = (tmp_path / "multi.png_tailwind.js").read_text()
+        tokens = json.loads((tmp_path / "multi.png_tokens.json").read_text())
+        assert "truncated to the first 2 of 5 colors" in css
+        assert "truncated to the first 2 of 5 colors" in js
+        assert tokens["$metadata"]["truncated_from"] == 5
+        assert css.count("--color-") == 3  # 2 capped colors + dominant
