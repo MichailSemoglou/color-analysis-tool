@@ -43,12 +43,14 @@ def _sanitize_display_name(name: str) -> str:
 def _safe_output_stem(name: str) -> str:
     """Return a filesystem-safe, collision-resistant stem for output files.
 
-    Builds on the display sanitizer, additionally replacing backslashes
-    (legal in POSIX filenames, but a path separator on Windows). When
+    Builds on the display sanitizer, additionally replacing path
+    separators. Real filenames cannot contain them, but a synthetic
+    ImageInfo can: without replacement, a crafted name could traverse
+    out of the output directory or resolve to an absolute path. When
     sanitization modified the name, a stable digest of the original is
     appended so two different source files cannot overwrite each other.
     """
-    safe = _sanitize_display_name(name).replace("\\", "-")
+    safe = _sanitize_display_name(name).replace("/", "-").replace("\\", "-")
     if safe != name:
         # os.fsencode preserves surrogate-escaped bytes from non-UTF-8
         # filenames, where str.encode("utf-8") would raise
