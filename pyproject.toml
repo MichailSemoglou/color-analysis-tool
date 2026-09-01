@@ -4,8 +4,8 @@ build-backend = "hatchling.build"
 
 [project]
 name = "color-analysis-tool"
-version = "1.4.0"
-description = "A comprehensive tool for analyzing colors in images with harmony calculations and multiple color space conversions"
+version = "2.0.0"
+description = "Image color palette extraction, harmony analysis, and design-token export"
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.10"
@@ -63,6 +63,7 @@ dev = [
     "isort>=5.12.0",
     "flake8>=6.0.0",
     "mypy>=1.0.0",
+    "ruff>=0.6.0",
     "build>=0.10.0",
     "twine>=7.0.0",
     "pip-audit>=2.0.0"
@@ -84,6 +85,8 @@ include = [
     "/LICENSE",
     "/README.md",
     "/CHANGELOG.md",
+    "/MIGRATION.md",
+    "/REFERENCES.md",
     "/CITATION.cff"
 ]
 
@@ -105,7 +108,15 @@ warn_return_any = true
 warn_unused_configs = true
 ignore_missing_imports = true
 
+[tool.ruff.lint]
+# Docstring linting only, matching the house convention (Args/Returns/Raises)
+select = ["D"]
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
 [tool.pytest.ini_options]
-testpaths = ["tests"]
+testpaths = ["tests", "color_analysis_tool"]
 python_files = ["test_*.py"]
 python_functions = ["test_*"]
+addopts = "--doctest-modules --cov=color_analysis_tool --cov-branch --cov-report=term-missing --cov-fail-under=100"

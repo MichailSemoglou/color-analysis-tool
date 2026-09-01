@@ -2,7 +2,7 @@ cff-version: 1.2.0
 message: "If you use this software, please cite it as below."
 type: software
 title: "Image Color Analysis Tool"
-abstract: "A comprehensive Python tool for analyzing colors in images, providing detailed information about color distributions, harmonies, and various color space conversions (RGB, HEX, CMYK). Features include color quantization, single image and batch processing, dominant color detection, color harmony calculations (complementary, analogous, triadic, tetradic), flexible output formats (plain text, JSON, and CSS/Design Tokens), design token export compatible with the W3C Design Token Community Group format and Tailwind CSS, and support for multiple image formats (PNG, JPG, TIFF, WebP, PSD)."
+abstract: "A Python tool for analyzing colors in images, providing detailed information about color distributions, harmonies, and color space conversions (RGB, HEX, CMYK, OKLab, OKLCh). Features include deterministic perceptual palette extraction (k-means++ clustering in OKLab), OKLCh color harmony calculations (complementary, analogous, triadic, tetradic), ICC-based CMYK conversion (FOGRA39), WCAG 2.2 and APCA contrast reporting, single image and batch processing, dominant color detection, flexible output formats (plain text, JSON, and CSS/Design Tokens), design token export compatible with the W3C Design Token Community Group format and Tailwind CSS v4, and support for multiple image formats (PNG, JPG, TIFF, WebP, PSD)."
 authors:
   - family-names: "Semoglou"
     given-names: "Michail"
@@ -10,8 +10,8 @@ authors:
 repository-code: "https://github.com/MichailSemoglou/color-analysis-tool"
 url: "https://github.com/MichailSemoglou/color-analysis-tool"
 doi: "10.5281/zenodo.17848058"
-version: "1.4.0"
-date-released: "2026-08-23"
+version: "2.0.0"
+date-released: "2026-09-01"
 license: MIT
 keywords:
   - "color analysis"
@@ -35,6 +35,6 @@ preferred-citation:
       orcid: "https://orcid.org/0009-0003-3268-5657"
   repository-code: "https://github.com/MichailSemoglou/color-analysis-tool"
   doi: "10.5281/zenodo.17848058"
-  version: "1.4.0"
-  date-released: "2026-08-23"
+  version: "2.0.0"
+  date-released: "2026-09-01"
   license: MIT

@@ -8,6 +8,8 @@ from PIL import Image
 
 from color_analysis_tool.analyzer import ColorConverter, ColorInfo, ImageAnalyzer, ImageInfo
 
+from .helpers import bundled_profile_path
+
 
 @pytest.fixture
 def red_image(tmp_path):
@@ -96,7 +98,21 @@ class TestAnalyzeImage:
         assert isinstance(color, ColorInfo)
         assert color.rgb == (255, 0, 0)
         assert color.hex == "#ff0000"
-        assert color.frequency == 100.0
+        assert color.weight == 100.0
+
+    def test_color_info_perceptual_fields(self, analyzer, red_image):
+        result = analyzer.analyze_image(red_image)
+        color = result.colors[0]
+        assert color.oklch == pytest.approx((0.628, 0.2577, 29.2339), abs=1e-3)
+        assert color.contrast is not None
+        assert color.contrast.on_white.wcag_ratio == pytest.approx(4.0, abs=0.01)
+        # The analyzed color is the dominant color: no self-comparison
+        assert color.contrast.vs_dominant is None
+
+    def test_cmyk_is_icc_based_by_default(self, analyzer, red_image):
+        result = analyzer.analyze_image(red_image)
+        assert result.colors[0].cmyk == ColorConverter.rgb_to_cmyk(255, 0, 0)
+        assert result.cmyk_profile == "FOGRA39 (ISO Coated v2)"
 
     def test_two_colors_detected(self, analyzer, two_color_image):
         result = analyzer.analyze_image(two_color_image)
@@ -106,7 +122,7 @@ class TestAnalyzeImage:
 
     def test_frequencies_sum_to_100(self, analyzer, two_color_image):
         result = analyzer.analyze_image(two_color_image)
-        total = sum(c.frequency for c in result.colors)
+        total = sum(c.weight for c in result.colors)
         assert abs(total - 100.0) < 0.1
 
     def test_invalid_sort_raises(self, analyzer, red_image):
@@ -130,14 +146,14 @@ class TestAnalyzeImage:
         result = analyzer.analyze_image(tmp_path / "nonexistent.png")
         assert result is None
 
-    def test_max_colors_quantization(self, analyzer, two_color_image):
+    def test_max_colors_reduces_palette(self, analyzer, two_color_image):
         result = analyzer.analyze_image(two_color_image, max_colors=2)
         assert result is not None
         assert len(result.colors) <= 2
 
     def test_sort_by_frequency(self, analyzer, two_color_image):
         result = analyzer.analyze_image(two_color_image, sort_by="frequency")
-        freqs = [c.frequency for c in result.colors]
+        freqs = [c.weight for c in result.colors]
         assert freqs == sorted(freqs, reverse=True)
 
     def test_harmonies_present_for_first_color(self, analyzer, red_image):
@@ -216,8 +232,30 @@ class TestSaveAnalysisJson:
         assert "rgb" in color
         assert "hex" in color
         assert "cmyk" in color
-        assert "frequency" in color
+        assert "weight" in color
+        assert "oklch" in color
+        assert "wcag" in color
+        assert "apca" in color
         assert "harmonies" in color
+
+    def test_json_wcag_and_apca_structure(self, analyzer, red_image, tmp_path):
+        info = analyzer.analyze_image(red_image)
+        analyzer.save_analysis(tmp_path, info, output_format="json")
+        data = json.loads((tmp_path / "red.png_analysis.json").read_text())
+        color = data["colors"][0]
+        on_white = color["wcag"]["on_white"]
+        assert set(on_white.keys()) == {"ratio", "aa", "aaa"}
+        assert on_white["ratio"] == pytest.approx(4.0, abs=0.01)
+        # The analyzed color is the dominant color: no self-comparison
+        assert color["wcag"]["vs_dominant"] is None
+        assert color["apca"]["status"] == "experimental"
+        assert isinstance(color["apca"]["on_white"], float)
+
+    def test_json_records_cmyk_profile(self, analyzer, red_image, tmp_path):
+        info = analyzer.analyze_image(red_image)
+        analyzer.save_analysis(tmp_path, info, output_format="json")
+        data = json.loads((tmp_path / "red.png_analysis.json").read_text())
+        assert data["cmyk_profile"] == "FOGRA39 (ISO Coated v2)"
 
 
 # ── batch_process ─────────────────────────────────────────────────────────────
@@ -304,7 +342,7 @@ class TestSaveAnalysisCss:
         analyzer.save_analysis(tmp_path, info, output_format="css")
         assert (tmp_path / "red.png_tokens.css").exists()
         assert (tmp_path / "red.png_tokens.json").exists()
-        assert (tmp_path / "red.png_tailwind.js").exists()
+        assert (tmp_path / "red.png_tailwind.css").exists()
 
     def test_css_contains_custom_property(self, analyzer, red_image, tmp_path):
         info = analyzer.analyze_image(red_image)
@@ -354,19 +392,26 @@ class TestSaveAnalysisCss:
         data = json.loads((tmp_path / "red.png_tokens.json").read_text())
         assert "color-dominant" in data["palette"]
 
-    def test_tailwind_contains_module_exports(self, analyzer, red_image, tmp_path):
+    def test_tailwind_contains_theme_block(self, analyzer, red_image, tmp_path):
         info = analyzer.analyze_image(red_image)
         analyzer.save_analysis(tmp_path, info, output_format="css")
-        content = (tmp_path / "red.png_tailwind.js").read_text()
-        assert "module.exports" in content
-        assert "#ff0000" in content
+        content = (tmp_path / "red.png_tailwind.css").read_text()
+        assert "@theme {" in content
+        assert "oklch(" in content
 
-    def test_tailwind_contains_extend_colors(self, analyzer, red_image, tmp_path):
+    def test_tailwind_import_hint_names_generated_file(self, analyzer, red_image, tmp_path):
+        # The import hint must reference the file actually written
         info = analyzer.analyze_image(red_image)
         analyzer.save_analysis(tmp_path, info, output_format="css")
-        content = (tmp_path / "red.png_tailwind.js").read_text()
-        assert "colors" in content
-        assert "extend" in content
+        content = (tmp_path / "red.png_tailwind.css").read_text()
+        assert '@import "./red.png_tailwind.css"' in content
+
+    def test_tailwind_uses_css_variable_keys(self, analyzer, red_image, tmp_path):
+        info = analyzer.analyze_image(red_image)
+        analyzer.save_analysis(tmp_path, info, output_format="css")
+        content = (tmp_path / "red.png_tailwind.css").read_text()
+        assert "--color-red-png-1:" in content
+        assert "--color-red-png-dominant:" in content
 
     def test_batch_css_output(self, analyzer, tmp_path):
         input_dir = tmp_path / "input"
@@ -379,7 +424,7 @@ class TestSaveAnalysisCss:
 
         assert (output_dir / "img.png_tokens.css").exists()
         assert (output_dir / "img.png_tokens.json").exists()
-        assert (output_dir / "img.png_tailwind.js").exists()
+        assert (output_dir / "img.png_tailwind.css").exists()
 
     def test_tailwind_key_sanitized(self, analyzer, tmp_path):
         img = Image.new("RGB", (5, 5), color=(255, 0, 0))
@@ -387,8 +432,8 @@ class TestSaveAnalysisCss:
         img.save(path)
         info = analyzer.analyze_image(path)
         analyzer.save_analysis(tmp_path, info, output_format="css")
-        content = (tmp_path / "my image 01.png_tailwind.js").read_text()
-        assert "'my-image-01-png':" in content
+        content = (tmp_path / "my image 01.png_tailwind.css").read_text()
+        assert "--color-my-image-01-png-1:" in content
 
 
 # ── alpha channel handling ─────────────────────────────────────────────────
@@ -407,7 +452,7 @@ class TestAlphaChannel:
     def test_frequency_relative_to_visible_pixels(self, analyzer, mixed_alpha_image):
         # 40 visible pixels out of 100 total; frequency must be 100%, not 40%
         result = analyzer.analyze_image(mixed_alpha_image)
-        assert result.colors[0].frequency == 100.0
+        assert result.colors[0].weight == 100.0
 
     def test_partially_transparent_pixels_are_visible(self, analyzer, tmp_path):
         # Any pixel with alpha > 0 counts as visible
@@ -416,7 +461,7 @@ class TestAlphaChannel:
         img.save(path)
         result = analyzer.analyze_image(path)
         assert result.dominant_color == (0, 0, 255)
-        assert result.colors[0].frequency == 100.0
+        assert result.colors[0].weight == 100.0
 
     def test_fully_transparent_image_returns_empty_palette(self, analyzer, fully_transparent_image):
         result = analyzer.analyze_image(fully_transparent_image)
@@ -431,22 +476,27 @@ class TestAlphaChannel:
         assert data["dominant_color"] is None
         assert data["colors"] == []
 
-    def test_quantization_preserves_alpha(self, analyzer, mixed_alpha_image):
+    @pytest.mark.parametrize("extractor", ["perceptual", "legacy"])
+    def test_palette_reduction_preserves_alpha(self, analyzer, mixed_alpha_image, extractor):
         # Regression: --colors N must not turn transparent pixels opaque black
-        result = analyzer.analyze_image(mixed_alpha_image, max_colors=4)
+        # (the original bug lived in the legacy quantization path)
+        result = analyzer.analyze_image(mixed_alpha_image, max_colors=4, extractor=extractor)
         assert result.dominant_color == (255, 0, 0)
         assert len(result.colors) == 1
-        assert result.colors[0].frequency == 100.0
+        assert result.colors[0].weight == 100.0
 
-    def test_quantized_fully_transparent_image(self, analyzer, fully_transparent_image):
-        result = analyzer.analyze_image(fully_transparent_image, max_colors=4)
+    @pytest.mark.parametrize("extractor", ["perceptual", "legacy"])
+    def test_reduced_fully_transparent_image(self, analyzer, fully_transparent_image, extractor):
+        result = analyzer.analyze_image(fully_transparent_image, max_colors=4, extractor=extractor)
         assert result is not None
         assert result.colors == []
         assert result.dominant_color is None
 
-    def test_transparent_payload_does_not_shift_palette(self, analyzer, tmp_path):
+    @pytest.mark.parametrize("extractor", ["perceptual", "legacy"])
+    def test_transparent_payload_does_not_shift_palette(self, analyzer, tmp_path, extractor):
         # Regression: noisy RGB payloads under fully transparent pixels must
-        # not consume palette slots or blend visible colors during quantization
+        # not consume palette slots or blend visible colors during palette
+        # reduction (the original bug lived in the legacy quantization path)
         img = Image.new("RGBA", (8, 8), (0, 0, 0, 0))
         for y in range(4):
             for x in range(8):
@@ -462,7 +512,7 @@ class TestAlphaChannel:
                 img.putpixel((x, y), visible[x // 2] + (255,))
         path = tmp_path / "noisy_alpha.png"
         img.save(path)
-        result = analyzer.analyze_image(path, max_colors=5)
+        result = analyzer.analyze_image(path, max_colors=5, extractor=extractor)
         assert {c.rgb for c in result.colors} == set(visible)
         assert result.dominant_color in visible
 
@@ -478,7 +528,7 @@ class TestAlphaChannel:
         result = analyzer.analyze_image(path)
         assert len(result.colors) == 1
         assert result.colors[0].rgb == (255, 0, 0)
-        assert result.colors[0].frequency == 100.0
+        assert result.colors[0].weight == 100.0
         assert result.dominant_color == (255, 0, 0)
 
 
@@ -586,7 +636,8 @@ class TestFilenameSanitization:
             rgb=rgb,
             hex=ColorConverter.rgb_to_hex(rgb),
             cmyk=ColorConverter.rgb_to_cmyk(*rgb),
-            frequency=100.0,
+            weight=100.0,
+            oklch=ColorConverter.rgb_to_oklch(rgb),
             harmonies={},
         )
         return ImageInfo(
@@ -597,15 +648,15 @@ class TestFilenameSanitization:
             dominant_color=rgb,
         )
 
-    def test_newline_stripped_from_css_and_js(self, analyzer, tmp_path):
+    def test_newline_stripped_from_css_artifacts(self, analyzer, tmp_path):
         # A newline in the filename must not inject lines into generated
-        # stylesheets or config snippets
+        # stylesheets or theme files
         info = self._info("x.png\ninjected: yes")
         analyzer.save_analysis(tmp_path, info, output_format="css")
         css_files = list(tmp_path.glob("x.png injected*_tokens.css"))
-        js_files = list(tmp_path.glob("x.png injected*_tailwind.js"))
-        assert len(css_files) == 1 and len(js_files) == 1
-        for content in (css_files[0].read_text(), js_files[0].read_text()):
+        theme_files = list(tmp_path.glob("x.png injected*_tailwind.css"))
+        assert len(css_files) == 1 and len(theme_files) == 1
+        for content in (css_files[0].read_text(), theme_files[0].read_text()):
             assert not any(line.strip() == "injected: yes" for line in content.split("\n"))
 
     def test_newline_stripped_from_txt_report(self, analyzer, tmp_path):
@@ -699,7 +750,7 @@ class TestDecompressionBombGuard:
 # ── automatic palette sizing (max_colors="auto") ─────────────────────────────
 
 class TestAutoPalette:
-    def test_auto_quantizes_high_color_image(self, analyzer, high_color_image):
+    def test_auto_bounds_high_color_image(self, analyzer, high_color_image):
         # 1024 unique colors exceeds the 256 threshold: auto must bound it
         result = analyzer.analyze_image(high_color_image)
         assert result is not None
@@ -710,9 +761,9 @@ class TestAutoPalette:
         # Under the threshold, auto analyzes every unique color faithfully
         result = analyzer.analyze_image(two_color_image)
         assert len(result.colors) == 2
-        assert abs(sum(c.frequency for c in result.colors) - 100.0) < 0.1
+        assert abs(sum(c.weight for c in result.colors) - 100.0) < 0.1
 
-    def test_zero_disables_quantization(self, analyzer, high_color_image):
+    def test_zero_disables_palette_reduction(self, analyzer, high_color_image):
         # 0 is the explicit opt-out: unbounded palette
         result = analyzer.analyze_image(high_color_image, max_colors=0)
         assert len(result.colors) == 1024
@@ -746,18 +797,21 @@ class TestAutoPalette:
 
 def _multi_color_info(n, filename="multi.png"):
     """Build a synthetic ImageInfo with n distinct colors."""
-    colors = []
-    for i in range(n):
-        # Encode the index across all three channels so every component
-        # stays within 0-255 even for n above 256
-        rgb = (i % 256, (i // 256) % 256, (i // 65536) % 256)
-        colors.append(ColorInfo(
+    # Encode the index across all three channels so every component
+    # stays within 0-255 even for n above 256
+    rgbs = [(i % 256, (i // 256) % 256, (i // 65536) % 256) for i in range(n)]
+    cmyk_values = ColorConverter.rgb_to_cmyk_batch(rgbs)
+    colors = [
+        ColorInfo(
             rgb=rgb,
             hex=ColorConverter.rgb_to_hex(rgb),
-            cmyk=ColorConverter.rgb_to_cmyk(*rgb),
-            frequency=round(100 / n, 2),
+            cmyk=cmyk,
+            weight=round(100 / n, 2),
+            oklch=ColorConverter.rgb_to_oklch(rgb),
             harmonies={},
-        ))
+        )
+        for rgb, cmyk in zip(rgbs, cmyk_values)
+    ]
     return ImageInfo(
         filename=filename,
         dimensions=(10, 10),
@@ -793,12 +847,13 @@ class TestOutputTruncation:
         monkeypatch.setattr("color_analysis_tool.exporters.MAX_OUTPUT_COLORS", 2)
         analyzer.save_analysis(tmp_path, _multi_color_info(5), output_format="css")
         css = (tmp_path / "multi.png_tokens.css").read_text()
-        js = (tmp_path / "multi.png_tailwind.js").read_text()
+        theme = (tmp_path / "multi.png_tailwind.css").read_text()
         tokens = json.loads((tmp_path / "multi.png_tokens.json").read_text())
         assert "truncated to the first 2 of 5 colors" in css
-        assert "truncated to the first 2 of 5 colors" in js
+        assert "truncated to the first 2 of 5 colors" in theme
         assert tokens["$metadata"]["truncated_from"] == 5
-        assert css.count("--color-") == 3  # 2 capped colors + dominant
+        # 2 capped colors (hex + oklch each) + dominant (hex + oklch)
+        assert css.count("--color-") == 6
 
     def test_default_cap_applies_at_1000(self, analyzer, tmp_path):
         # The built-in 1000-color cap guards output without any patching
@@ -806,3 +861,342 @@ class TestOutputTruncation:
         data = json.loads((tmp_path / "multi.png_analysis.json").read_text())
         assert data["truncated_from"] == 1200
         assert len(data["colors"]) == 1000
+
+
+# ── palette extractors (v2) ────────────────────────────────────────────────────
+
+class TestExtractors:
+    def test_default_extractor_is_perceptual(self, analyzer, red_image):
+        result = analyzer.analyze_image(red_image)
+        assert result.colors[0].rgb == (255, 0, 0)
+        assert result.colors[0].weight == 100.0
+
+    def test_perceptual_matches_legacy_on_low_color_image(self, analyzer, two_color_image):
+        # Under the auto threshold both engines report the same exact weights
+        perceptual = analyzer.analyze_image(two_color_image)
+        legacy = analyzer.analyze_image(two_color_image, extractor="legacy")
+        assert {c.rgb: c.weight for c in perceptual.colors} == {
+            c.rgb: c.weight for c in legacy.colors
+        }
+
+    def test_perceptual_bounds_high_color_image(self, analyzer, high_color_image):
+        # 1024 unique colors: the perceptual engine returns a bounded palette
+        result = analyzer.analyze_image(high_color_image)
+        assert result is not None
+        assert 1 <= len(result.colors) <= 32
+        assert result.dominant_color is not None
+
+    def test_perceptual_is_deterministic(self, analyzer, high_color_image):
+        first = analyzer.analyze_image(high_color_image)
+        second = analyzer.analyze_image(high_color_image)
+        assert [c.rgb for c in first.colors] == [c.rgb for c in second.colors]
+        assert [c.weight for c in first.colors] == [c.weight for c in second.colors]
+
+    def test_perceptual_weights_sum_to_100(self, analyzer, high_color_image):
+        result = analyzer.analyze_image(high_color_image)
+        assert abs(sum(c.weight for c in result.colors) - 100.0) < 0.5
+
+    def test_dominant_is_heaviest_cluster(self, analyzer, tmp_path):
+        # 80% green, 20% red: green must win regardless of clustering
+        img = Image.new("RGB", (10, 10), color=(255, 0, 0))
+        for y in range(10):
+            for x in range(2, 10):
+                img.putpixel((x, y), (0, 255, 0))
+        path = tmp_path / "dominant.png"
+        img.save(path)
+        result = analyzer.analyze_image(path)
+        assert result.dominant_color == (0, 255, 0)
+
+    def test_perceptual_max_colors_respected(self, analyzer, high_color_image):
+        result = analyzer.analyze_image(high_color_image, max_colors=8)
+        assert 1 <= len(result.colors) <= 8
+
+    def test_legacy_extractor_keeps_v1_palette(self, analyzer, high_color_image):
+        # v1 auto behavior: median-cut quantization to 32 colors
+        result = analyzer.analyze_image(high_color_image, extractor="legacy")
+        assert result is not None
+        assert len(result.colors) <= 32
+
+    def test_legacy_zero_disables_quantization(self, analyzer, high_color_image):
+        result = analyzer.analyze_image(high_color_image, extractor="legacy", max_colors=0)
+        assert len(result.colors) == 1024
+
+    def test_invalid_extractor_raises(self, analyzer, red_image):
+        with pytest.raises(ValueError, match="extractor"):
+            analyzer.analyze_image(red_image, extractor="magic")
+
+    def test_invalid_harmony_engine_raises(self, analyzer, red_image):
+        with pytest.raises(ValueError, match="harmony_engine"):
+            analyzer.analyze_image(red_image, harmony_engine="magic")
+
+    def test_harmony_engine_oklch_default(self, analyzer, red_image):
+        result = analyzer.analyze_image(red_image)
+        harmonies = result.colors[0].harmonies
+        assert set(harmonies.keys()) == {"complementary", "analogous", "triadic", "tetradic"}
+        comp = harmonies["complementary"][0]
+        assert all(0 <= v <= 255 for v in comp)
+
+    def test_harmony_engine_hsv_legacy(self, analyzer, red_image):
+        result = analyzer.analyze_image(red_image, harmony_engine="hsv_legacy")
+        assert result.colors[0].harmonies["complementary"] == [(0, 255, 255)]
+
+    def test_custom_cmyk_profile_is_recorded(self, analyzer, red_image):
+        result = analyzer.analyze_image(
+            red_image,
+            cmyk_profile=bundled_profile_path(),
+        )
+        assert result.cmyk_profile == "ISOcoated_v2_eci.icc"
+
+    def test_cmyk_method_device_naive(self, analyzer, red_image):
+        result = analyzer.analyze_image(red_image, cmyk_method="device_naive")
+        assert result.colors[0].cmyk == (0, 100, 100, 0)
+
+    def test_cmyk_method_default_is_icc(self, analyzer, red_image):
+        result = analyzer.analyze_image(red_image)
+        assert result.colors[0].cmyk == ColorConverter.rgb_to_cmyk(255, 0, 0)
+
+    def test_invalid_cmyk_method_raises(self, analyzer, red_image):
+        with pytest.raises(ValueError, match="cmyk_method"):
+            analyzer.analyze_image(red_image, cmyk_method="magic")
+
+
+# ── v2 output labels ───────────────────────────────────────────────────────────
+
+class TestOutputLabels:
+    def test_txt_uses_weight_label(self, analyzer, red_image, tmp_path):
+        info = analyzer.analyze_image(red_image)
+        analyzer.save_analysis(tmp_path, info)
+        content = (tmp_path / "red.png_analysis.txt").read_text()
+        assert "Weight: 100.0%" in content
+        assert "Frequency" not in content
+
+    def test_txt_labels_cmyk_profile(self, analyzer, red_image, tmp_path):
+        info = analyzer.analyze_image(red_image)
+        analyzer.save_analysis(tmp_path, info)
+        content = (tmp_path / "red.png_analysis.txt").read_text()
+        assert "CMYK (FOGRA39 (ISO Coated v2))" in content
+
+    def test_txt_contains_oklch(self, analyzer, red_image, tmp_path):
+        info = analyzer.analyze_image(red_image)
+        analyzer.save_analysis(tmp_path, info)
+        content = (tmp_path / "red.png_analysis.txt").read_text()
+        assert "OKLCH: oklch(0.628 0.2577 29.2339)" in content
+
+    def test_txt_contains_wcag_and_apca(self, analyzer, red_image, tmp_path):
+        info = analyzer.analyze_image(red_image)
+        analyzer.save_analysis(tmp_path, info)
+        content = (tmp_path / "red.png_analysis.txt").read_text()
+        assert "Contrast on white: 4.0:1 (AA: no, AAA: no)" in content
+        assert "Contrast on black: 5.25:1 (AA: yes, AAA: no)" in content
+        assert "APCA Lc (experimental)" in content
+
+    def test_css_contains_oklch_and_contrast_properties(self, analyzer, red_image, tmp_path):
+        info = analyzer.analyze_image(red_image)
+        analyzer.save_analysis(tmp_path, info, output_format="css")
+        content = (tmp_path / "red.png_tokens.css").read_text()
+        assert "--color-1-oklch: oklch(" in content
+        assert "--color-1-contrast-on-white: 4.0;" in content
+        assert "--color-1-contrast-on-black: 5.25;" in content
+        assert "--color-dominant-oklch: oklch(" in content
+
+    def test_tokens_json_extensions(self, analyzer, red_image, tmp_path):
+        info = analyzer.analyze_image(red_image)
+        analyzer.save_analysis(tmp_path, info, output_format="css")
+        data = json.loads((tmp_path / "red.png_tokens.json").read_text())
+        entry = data["palette"]["color-1"]
+        extensions = entry["$extensions"]["com.color-analysis-tool"]
+        assert extensions["oklch"].startswith("oklch(")
+        assert extensions["wcag"]["on_white"]["ratio"] == pytest.approx(4.0, abs=0.01)
+        assert extensions["apca"]["status"] == "experimental"
+
+
+# ── contrast data flow through outputs ─────────────────────────────────────────
+
+class TestContrastFlowThroughOutputs:
+    """The non-dominant color's vs_dominant comparison must reach every format."""
+
+    def test_vs_dominant_in_txt(self, analyzer, two_color_image, tmp_path):
+        info = analyzer.analyze_image(two_color_image)
+        analyzer.save_analysis(tmp_path, info)
+        content = (tmp_path / "two_color.png_analysis.txt").read_text()
+        assert "Contrast vs dominant: 2.15:1" in content
+
+    def test_vs_dominant_in_json(self, analyzer, two_color_image, tmp_path):
+        info = analyzer.analyze_image(two_color_image)
+        analyzer.save_analysis(tmp_path, info, output_format="json")
+        colors = json.loads((tmp_path / "two_color.png_analysis.json").read_text())["colors"]
+        non_dominant = next(c for c in colors if c["rgb"] != list(info.dominant_color))
+        vs_dominant = non_dominant["wcag"]["vs_dominant"]
+        assert vs_dominant["ratio"] == pytest.approx(2.15, abs=0.01)
+        assert set(vs_dominant.keys()) == {"ratio", "aa", "aaa"}
+
+    def test_vs_dominant_in_tokens(self, analyzer, two_color_image, tmp_path):
+        info = analyzer.analyze_image(two_color_image)
+        analyzer.save_analysis(tmp_path, info, output_format="css")
+        data = json.loads((tmp_path / "two_color.png_tokens.json").read_text())
+        entries = [
+            t["$extensions"]["com.color-analysis-tool"]
+            for k, t in data["palette"].items()
+            if k != "color-dominant"
+        ]
+        assert any(e["wcag"]["vs_dominant"] is not None for e in entries)
+
+
+class TestContrastNoneGuard:
+    """A ColorInfo built without a contrast report (v1-style construction)
+    must still render in every output format."""
+
+    def test_txt_renders_without_contrast(self, analyzer, tmp_path):
+        analyzer.save_analysis(tmp_path, _multi_color_info(3))
+        content = (tmp_path / "multi.png_analysis.txt").read_text()
+        assert "Contrast" not in content
+        assert "Weight:" in content
+
+    def test_json_renders_null_contrast(self, analyzer, tmp_path):
+        analyzer.save_analysis(tmp_path, _multi_color_info(3), output_format="json")
+        data = json.loads((tmp_path / "multi.png_analysis.json").read_text())
+        assert data["colors"][0]["wcag"] is None
+        assert data["colors"][0]["apca"] is None
+
+    def test_css_renders_without_contrast_properties(self, analyzer, tmp_path):
+        analyzer.save_analysis(tmp_path, _multi_color_info(3), output_format="css")
+        css = (tmp_path / "multi.png_tokens.css").read_text()
+        assert "--color-1:" in css
+        assert "contrast-on" not in css
+        tokens = json.loads((tmp_path / "multi.png_tokens.json").read_text())
+        # OKLCh data survives even without a contrast report
+        extensions = tokens["palette"]["color-1"]["$extensions"]["com.color-analysis-tool"]
+        assert "oklch" in extensions
+        assert "wcag" not in extensions
+        assert "apca" not in extensions
+
+
+# ── error contracts and engine branches ────────────────────────────────────────
+
+class TestErrorContracts:
+    def test_bad_cmyk_profile_path_raises(self, analyzer, red_image):
+        with pytest.raises(OSError, match="cannot open profile"):
+            analyzer.analyze_image(red_image, cmyk_profile="/nonexistent/profile.icc")
+
+    def test_imagecms_missing_raises_runtime(self, monkeypatch):
+        monkeypatch.setattr("color_analysis_tool.analyzer._HAS_IMAGECMS", False)
+        with pytest.raises(RuntimeError, match="LittleCMS"):
+            ColorConverter.rgb_to_cmyk(1, 2, 3)
+
+    def test_device_naive_works_without_imagecms(self, monkeypatch):
+        # The naive formula must not depend on LittleCMS
+        monkeypatch.setattr("color_analysis_tool.analyzer._HAS_IMAGECMS", False)
+        assert ColorConverter.rgb_to_cmyk(255, 0, 0, method="device_naive") == (0, 100, 100, 0)
+
+    def test_legacy_extractor_with_explicit_colors(self, analyzer, high_color_image):
+        # Legacy pipeline with -c N: median-cut quantization branch
+        result = analyzer.analyze_image(high_color_image, extractor="legacy", max_colors=16)
+        assert result is not None
+        assert 1 <= len(result.colors) <= 16
+        assert abs(sum(c.weight for c in result.colors) - 100.0) < 0.5
+
+
+# ── public-behavior regression locks ───────────────────────────────────────────
+
+class TestBehaviorLocks:
+    def test_dominant_tie_breaks_deterministically(self, analyzer, tmp_path):
+        # Four equal quadrants: the dominant color is deterministic
+        img = Image.new("RGB", (10, 10), (255, 255, 255))
+        for y in range(5):
+            for x in range(5, 10):
+                img.putpixel((x, y), (230, 57, 70))
+        for y in range(5, 10):
+            for x in range(5):
+                img.putpixel((x, y), (42, 157, 143))
+            for x in range(5, 10):
+                img.putpixel((x, y), (58, 123, 213))
+        path = tmp_path / "quadrants.png"
+        img.save(path)
+        first = analyzer.analyze_image(path)
+        second = analyzer.analyze_image(path)
+        assert first.dominant_color == second.dominant_color
+        assert first.dominant_color == (42, 157, 143)
+
+    def test_dominant_tie_break_independent_of_sort(self, analyzer, tmp_path):
+        # Regression: on a weight tie, max() used to scan the criterion-
+        # sorted list, so the dominant color changed with sort_by. It is
+        # now resolved on the deterministic weight order before re-sorting.
+        path = _make_two_color_image(tmp_path / "tie.png", (255, 0, 0), (0, 0, 255))
+        for criterion in ("frequency", "hue", "saturation", "brightness"):
+            result = analyzer.analyze_image(path, sort_by=criterion)
+            assert result.dominant_color == (0, 0, 255)
+
+    def test_tiff_image(self, analyzer, tmp_path):
+        img = Image.new("RGB", (10, 10), color=(18, 52, 86))
+        path = tmp_path / "photo.tiff"
+        img.save(path)
+        result = analyzer.analyze_image(path)
+        assert result.dominant_color == (18, 52, 86)
+        assert result.format == "TIFF"
+
+    def test_webp_image(self, analyzer, tmp_path):
+        img = Image.new("RGB", (10, 10), color=(18, 52, 86))
+        path = tmp_path / "photo.webp"
+        img.save(path, lossless=True)
+        result = analyzer.analyze_image(path)
+        assert result.dominant_color == (18, 52, 86)
+        assert result.format == "WEBP"
+
+    def test_batch_forwards_engines_to_every_output(self, analyzer, tmp_path):
+        input_dir = tmp_path / "input"
+        input_dir.mkdir()
+        Image.new("RGB", (5, 5), color=(255, 0, 0)).save(input_dir / "a.png")
+        Image.new("RGB", (5, 5), color=(0, 255, 0)).save(input_dir / "b.png")
+
+        output_dir = tmp_path / "output"
+        analyzer.batch_process(
+            input_dir,
+            output_dir,
+            output_format="json",
+            extractor="legacy",
+            harmony_engine="hsv_legacy",
+            cmyk_profile=bundled_profile_path(),
+        )
+        for name in ("a", "b"):
+            data = json.loads((output_dir / f"{name}.png_analysis.json").read_text())
+            assert data["cmyk_profile"] == "ISOcoated_v2_eci.icc"
+            # hsv_legacy harmony for red: cyan; for green: magenta
+            assert data["colors"][0]["harmonies"]["complementary"] in (
+                [[0, 255, 255]],
+                [[255, 0, 255]],
+            )
+
+
+# ── branch coverage gap closures ───────────────────────────────────────────────
+
+class TestBranchCoverageGaps:
+    """Each test below takes the previously untaken exit of a decision point."""
+
+    def test_legacy_probe_skips_transparent_pixels(self, analyzer, mixed_alpha_image):
+        # The legacy auto probe counts unique visible colors; its
+        # alpha <= 0 branch only fires when the probe walks a transparent
+        # pixel, which opaque test images never do
+        result = analyzer.analyze_image(mixed_alpha_image, extractor="legacy")
+        assert result.dominant_color == (255, 0, 0)
+        assert len(result.colors) == 1
+
+    def test_batch_skips_unanalyzable_file(self, analyzer, tmp_path):
+        # A corrupt image returns None from analyze_image inside a batch;
+        # the batch must skip it and still process the rest
+        input_dir = tmp_path / "input"
+        input_dir.mkdir()
+        Image.new("RGB", (5, 5), color=(255, 0, 0)).save(input_dir / "ok.png")
+        (input_dir / "corrupt.png").write_bytes(b"not actually an image")
+
+        output_dir = tmp_path / "output"
+        analyzer.batch_process(input_dir, output_dir)
+        assert (output_dir / "ok.png_analysis.txt").exists()
+        assert not (output_dir / "corrupt.png_analysis.txt").exists()
+
+    def test_txt_report_without_dominant_color(self, analyzer, fully_transparent_image, tmp_path):
+        # A fully transparent image has no dominant color; the txt report
+        # must omit the Dominant Color line rather than write garbage
+        info = analyzer.analyze_image(fully_transparent_image)
+        analyzer.save_analysis(tmp_path, info)
+        content = (tmp_path / "transparent.png_analysis.txt").read_text()
+        assert "Dominant Color" not in content

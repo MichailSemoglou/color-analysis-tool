@@ -25,13 +25,24 @@ what you would like to change.
    ```bash
    pytest                                               # tests with coverage
    flake8 color_analysis_tool/ --max-line-length=120    # lint
+   ruff check color_analysis_tool/                      # docstring lint
    mypy color_analysis_tool/                            # type check
    isort --check color_analysis_tool/ tests/            # import order
    pip-audit                                            # dependency audit
    ```
 
 The test suite builds synthetic in-memory images, so no fixture files are
-needed. New behavior needs new tests, and CI fails below 90% coverage.
+needed. New behavior needs new tests, and CI fails below 100% coverage.
+Doctests in package docstrings run as part of the test suite.
+
+## Documentation Style
+
+Docstrings follow the convention used throughout the package: a short
+summary line, then `Args`, `Returns`, and `Raises` sections where
+applicable. When implementing a standardized method, cite the source
+specification or paper in the docstring (for example WCAG 2.2 success
+criterion numbers, Sharma et al. 2005, or Ottosson 2020). Docstrings and
+comments stay plain ASCII.
 
 ## Pull Requests
 

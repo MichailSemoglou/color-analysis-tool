@@ -13,6 +13,8 @@ from PIL import Image
 from color_analysis_tool.analyzer import ImageAnalyzer
 from color_analysis_tool.cli import main
 
+from .helpers import bundled_profile_path
+
 
 @pytest.fixture
 def red_image(tmp_path):
@@ -66,7 +68,7 @@ class TestBasicInvocation:
         run_cli(monkeypatch, red_image, out, "-f", "css")
         assert (out / "red.png_tokens.css").exists()
         assert (out / "red.png_tokens.json").exists()
-        assert (out / "red.png_tailwind.js").exists()
+        assert (out / "red.png_tailwind.css").exists()
 
     def test_sort_option_recorded(self, monkeypatch, red_image, tmp_path):
         out = tmp_path / "out"
@@ -74,7 +76,7 @@ class TestBasicInvocation:
         content = (out / "red.png_analysis.txt").read_text()
         assert "sorted by hue" in content
 
-    def test_quantize_flag(self, monkeypatch, tmp_path):
+    def test_colors_flag(self, monkeypatch, tmp_path):
         img = Image.new("RGB", (10, 10), color=(255, 0, 0))
         for y in range(5, 10):
             for x in range(10):
@@ -184,3 +186,116 @@ class TestErrorPaths:
         with pytest.raises(SystemExit) as exc_info:
             run_cli(monkeypatch, red_image, tmp_path / "out")
         assert exc_info.value.code == 1
+
+    def test_nonexistent_input_exits_1(self, monkeypatch, tmp_path):
+        with pytest.raises(SystemExit) as exc_info:
+            run_cli(monkeypatch, tmp_path / "does-not-exist.png", tmp_path / "out")
+        assert exc_info.value.code == 1
+
+    def test_get_version_fallback(self, monkeypatch):
+        import color_analysis_tool
+        from color_analysis_tool.cli import _get_version
+
+        monkeypatch.delattr(color_analysis_tool, "__version__")
+        assert _get_version() == "unknown"
+
+    def test_module_invocation(self, monkeypatch, capsys):
+        # Running the module as __main__ exercises the __main__ guard;
+        # drop the cached module first so runpy executes it fresh
+        import runpy
+        import sys
+
+        monkeypatch.delitem(sys.modules, "color_analysis_tool.cli", raising=False)
+        monkeypatch.setattr("sys.argv", ["color-analysis", "--version"])
+        with pytest.raises(SystemExit) as exc_info:
+            runpy.run_module("color_analysis_tool.cli", run_name="__main__")
+        assert exc_info.value.code == 0
+        assert "color-analysis" in capsys.readouterr().out
+
+    def test_deterministic_json_on_high_color_image(self, monkeypatch, tmp_path):
+        # 1024 unique colors exercise the clustering path through the CLI;
+        # two runs must produce byte-identical JSON (reproducibility claim)
+        img = Image.new("RGB", (32, 32))
+        for i in range(1024):
+            img.putpixel((i % 32, i // 32), (i % 256, i // 256, (i * 7) % 256))
+        path = tmp_path / "high_color.png"
+        img.save(path)
+
+        out_a, out_b = tmp_path / "out_a", tmp_path / "out_b"
+        run_cli(monkeypatch, path, out_a, "-f", "json")
+        run_cli(monkeypatch, path, out_b, "-f", "json")
+        assert (out_a / "high_color.png_analysis.json").read_bytes() == (
+            out_b / "high_color.png_analysis.json"
+        ).read_bytes()
+
+
+# --- v2 engine flags ----------------------------------------------------------
+
+
+class TestEngineFlags:
+    def test_legacy_extractor_flag(self, monkeypatch, red_image, tmp_path):
+        out = tmp_path / "out"
+        run_cli(monkeypatch, red_image, out, "--extractor", "legacy")
+        assert (out / "red.png_analysis.txt").exists()
+
+    def test_invalid_extractor_rejected(self, monkeypatch, red_image, tmp_path):
+        with pytest.raises(SystemExit) as exc_info:
+            run_cli(monkeypatch, red_image, tmp_path / "out", "--extractor", "magic")
+        assert exc_info.value.code == 2  # argparse choices validation
+
+    def test_harmony_engine_flag(self, monkeypatch, red_image, tmp_path):
+        out = tmp_path / "out"
+        run_cli(monkeypatch, red_image, out, "-f", "json", "--harmony-engine", "hsv_legacy")
+        data = json.loads((out / "red.png_analysis.json").read_text())
+        assert data["colors"][0]["harmonies"]["complementary"] == [[0, 255, 255]]
+
+    def test_invalid_harmony_engine_rejected(self, monkeypatch, red_image, tmp_path):
+        with pytest.raises(SystemExit) as exc_info:
+            run_cli(monkeypatch, red_image, tmp_path / "out", "--harmony-engine", "magic")
+        assert exc_info.value.code == 2
+
+    def test_default_harmonies_are_oklch(self, monkeypatch, red_image, tmp_path):
+        out = tmp_path / "out"
+        run_cli(monkeypatch, red_image, out, "-f", "json")
+        data = json.loads((out / "red.png_analysis.json").read_text())
+        # The OKLCh complement of red is not the HSV cyan
+        assert data["colors"][0]["harmonies"]["complementary"] != [[0, 255, 255]]
+
+    def test_cmyk_profile_flag(self, monkeypatch, red_image, tmp_path):
+        out = tmp_path / "out"
+        run_cli(
+            monkeypatch,
+            red_image,
+            out,
+            "-f",
+            "json",
+            "--cmyk-profile",
+            bundled_profile_path(),
+        )
+        data = json.loads((out / "red.png_analysis.json").read_text())
+        assert data["cmyk_profile"] == "ISOcoated_v2_eci.icc"
+
+    def test_cmyk_method_flag(self, monkeypatch, red_image, tmp_path):
+        out = tmp_path / "out"
+        run_cli(monkeypatch, red_image, out, "-f", "json", "--cmyk-method", "device_naive")
+        data = json.loads((out / "red.png_analysis.json").read_text())
+        assert data["colors"][0]["cmyk"] == [0, 100, 100, 0]
+
+    def test_invalid_cmyk_method_rejected(self, monkeypatch, red_image, tmp_path):
+        with pytest.raises(SystemExit) as exc_info:
+            run_cli(monkeypatch, red_image, tmp_path / "out", "--cmyk-method", "magic")
+        assert exc_info.value.code == 2
+
+    def test_batch_with_engine_flags(self, monkeypatch, image_dir, tmp_path):
+        out = tmp_path / "out"
+        run_cli(
+            monkeypatch,
+            image_dir,
+            out,
+            "--extractor",
+            "legacy",
+            "--harmony-engine",
+            "hsv_legacy",
+        )
+        assert (out / "a.png_analysis.txt").exists()
+        assert (out / "b.png_analysis.txt").exists()

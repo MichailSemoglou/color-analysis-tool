@@ -5,6 +5,40 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.0] - 2026-09-01
+
+The perceptual core release: palette extraction, harmony computation, and CMYK conversion move to perceptually uniform color science (OKLab, OKLCh, ICC color management), and an accessibility report joins the text, JSON, and design-token outputs. See [MIGRATION.md](MIGRATION.md) for upgrade notes.
+
+### Changed
+
+- **BREAKING**: `ColorInfo.frequency` renamed to `ColorInfo.weight`; the JSON field is renamed likewise, and text reports label it Weight
+- **BREAKING**: the default palette extractor is now deterministic k-means++ clustering in OKLab with visible-pixel coverage weights and near-duplicate cluster merging at CIEDE2000 2.2; the v1 pipeline (exact counting with median-cut quantization) remains available via `--extractor legacy`
+- **BREAKING**: harmonies are now computed by hue rotation in OKLCh with hue-preserving gamut mapping; the HSV engine remains available via `--harmony-engine hsv_legacy`
+- **BREAKING**: CMYK values are now ICC-based, converting from sRGB through the bundled FOGRA39 profile (ISO Coated v2, ECI) with perceptual rendering intent; the previous undercolor-removal formula remains available as `method="device_naive"` on `rgb_to_cmyk`
+- **BREAKING**: `--format css` now emits `{name}_tailwind.css` (a Tailwind CSS v4 `@theme` block with OKLCH values) instead of the v3 `{name}_tailwind.js` config snippet
+- **BREAKING**: the JSON schema replaces `frequency` with `weight` and adds per-color `oklch`, `wcag`, and `apca` fields plus a top-level `cmyk_profile` field
+- `--colors auto` under the perceptual extractor now reduces high-color images to a bounded 32-color palette by clustering instead of median-cut quantization
+- The package description (PyPI summary) was rewritten for the v2 scope: palette extraction, harmony analysis, and design-token export
+- CI now lints docstrings with ruff (Google convention), runs doctests under pytest, and enforces a 100% coverage floor including branch coverage (previously 90%, line coverage only)
+
+### Added
+
+- Perceptual palette engine: seeded, deterministic k-means++ in OKLab (Ottosson 2020) with exact visible-pixel coverage weights and near-duplicate merging at CIEDE2000 2.2 (Sharma et al. 2005), roughly one just-noticeable difference
+- Perceptual harmonies: OKLCh hue rotation with hue-preserving chroma reduction by binary search until colors fit the sRGB gamut
+- Accessibility report: WCAG 2.2 contrast ratios with AA/AAA labels against white, black, and the dominant color, plus APCA Lc values clearly labeled as experimental and non-normative, in text, JSON, and design-token JSON outputs; the CSS custom-properties file carries the white and black ratios
+- OKLCH values in text and JSON reports, as CSS custom properties (`--color-N-oklch`), in the design token `$extensions`, and as the value notation of the Tailwind v4 `@theme` artifact
+- Extended color space conversions on `ColorConverter`: `rgb_to_oklab`, `rgb_to_oklch`, `rgb_to_xyz`, `rgb_to_lab`
+- `--cmyk-profile PATH` for custom ICC destination profiles; the profile used is recorded in JSON output and text reports
+- `--cmyk-method device_naive` (CLI) and `cmyk_method=` (API) make the v1 CMYK formula selectable end to end
+- `ColorConverter.rgb_to_cmyk_batch` converts a whole palette in one ICC transform; `analyze_image` now uses it, cutting per-image conversion time from one transform per color to one per image
+- New `color_spaces`, `clustering`, and `accessibility` modules holding the perceptual color math, the palette engine, and the contrast metrics
+- Bundled ISO Coated v2 (ECI) ICC profile under `color_analysis_tool/profiles/`, with attribution, license note, and checksum
+- Tests for the new engines and output fields (329 total)
+
+### Fixed
+
+- On a weight tie, the dominant color no longer depends on the display sort order; it is resolved on the deterministic weight order, with the lowest RGB winning the tie
+
 ## [1.4.0] - 2026-08-23
 
 ### Added
@@ -144,6 +178,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - PEP 621 compliant packaging with `pyproject.toml`
 - Type hints throughout the codebase
 
+[2.0.0]: https://github.com/MichailSemoglou/color-analysis-tool/compare/v1.4.0...v2.0.0
 [1.4.0]: https://github.com/MichailSemoglou/color-analysis-tool/compare/v1.3.0...v1.4.0
 [1.3.0]: https://github.com/MichailSemoglou/color-analysis-tool/compare/v1.2.0...v1.3.0
 [1.2.0]: https://github.com/MichailSemoglou/color-analysis-tool/compare/v1.1.0...v1.2.0
