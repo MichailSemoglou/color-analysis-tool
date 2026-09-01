@@ -1050,7 +1050,11 @@ class TestContrastNoneGuard:
         assert "--color-1:" in css
         assert "contrast-on" not in css
         tokens = json.loads((tmp_path / "multi.png_tokens.json").read_text())
-        assert "$extensions" not in tokens["palette"]["color-1"]
+        # OKLCh data survives even without a contrast report
+        extensions = tokens["palette"]["color-1"]["$extensions"]["com.color-analysis-tool"]
+        assert "oklch" in extensions
+        assert "wcag" not in extensions
+        assert "apca" not in extensions
 
 
 # ── error contracts and engine branches ────────────────────────────────────────

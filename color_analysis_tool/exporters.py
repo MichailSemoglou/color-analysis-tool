@@ -356,14 +356,11 @@ def _save_css(
                 f"{color.weight}% of image"
             ),
         }
+        extensions: Dict[str, object] = {"oklch": _oklch_string(color.oklch)}
         if color.contrast:
-            token["$extensions"] = {
-                "com.color-analysis-tool": {
-                    "oklch": _oklch_string(color.oklch),
-                    "wcag": _wcag_json(color.contrast),
-                    "apca": _apca_json(color.contrast),
-                }
-            }
+            extensions["wcag"] = _wcag_json(color.contrast)
+            extensions["apca"] = _apca_json(color.contrast)
+        token["$extensions"] = {"com.color-analysis-tool": extensions}
         token_dict[f"color-{idx}"] = token
     if image_info.dominant_color:
         token_dict["color-dominant"] = {
