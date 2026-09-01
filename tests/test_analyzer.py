@@ -8,6 +8,8 @@ from PIL import Image
 
 from color_analysis_tool.analyzer import ColorConverter, ColorInfo, ImageAnalyzer, ImageInfo
 
+from .helpers import bundled_profile_path
+
 
 @pytest.fixture
 def red_image(tmp_path):
@@ -941,7 +943,7 @@ class TestExtractors:
     def test_custom_cmyk_profile_is_recorded(self, analyzer, red_image):
         result = analyzer.analyze_image(
             red_image,
-            cmyk_profile="color_analysis_tool/profiles/ISOcoated_v2_eci.icc",
+            cmyk_profile=bundled_profile_path(),
         )
         assert result.cmyk_profile == "ISOcoated_v2_eci.icc"
 
@@ -1141,7 +1143,7 @@ class TestBehaviorLocks:
             output_format="json",
             extractor="legacy",
             harmony_engine="hsv_legacy",
-            cmyk_profile="color_analysis_tool/profiles/ISOcoated_v2_eci.icc",
+            cmyk_profile=bundled_profile_path(),
         )
         for name in ("a", "b"):
             data = json.loads((output_dir / f"{name}.png_analysis.json").read_text())

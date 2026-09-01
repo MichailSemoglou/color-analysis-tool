@@ -4,6 +4,8 @@ import pytest
 
 from color_analysis_tool.analyzer import ColorConverter
 
+from .helpers import bundled_profile_path
+
 
 class TestRgbToHex:
     def test_white(self):
@@ -132,7 +134,7 @@ class TestRgbToCmykIcc:
     def test_custom_profile_path_matches_default(self):
         default = ColorConverter.rgb_to_cmyk(18, 52, 86)
         explicit = ColorConverter.rgb_to_cmyk(
-            18, 52, 86, profile="color_analysis_tool/profiles/ISOcoated_v2_eci.icc"
+            18, 52, 86, profile=bundled_profile_path()
         )
         assert default == explicit
 
@@ -198,7 +200,7 @@ class TestRgbToCmykBatch:
 
     def test_custom_profile_path_matches_default(self):
         batch = ColorConverter.rgb_to_cmyk_batch(
-            self.SAMPLE, profile="color_analysis_tool/profiles/ISOcoated_v2_eci.icc"
+            self.SAMPLE, profile=bundled_profile_path()
         )
         assert batch == ColorConverter.rgb_to_cmyk_batch(self.SAMPLE)
 

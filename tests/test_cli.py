@@ -13,6 +13,8 @@ from PIL import Image
 from color_analysis_tool.analyzer import ImageAnalyzer
 from color_analysis_tool.cli import main
 
+from .helpers import bundled_profile_path
+
 
 @pytest.fixture
 def red_image(tmp_path):
@@ -268,7 +270,7 @@ class TestEngineFlags:
             "-f",
             "json",
             "--cmyk-profile",
-            "color_analysis_tool/profiles/ISOcoated_v2_eci.icc",
+            bundled_profile_path(),
         )
         data = json.loads((out / "red.png_analysis.json").read_text())
         assert data["cmyk_profile"] == "ISOcoated_v2_eci.icc"
