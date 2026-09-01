@@ -154,30 +154,34 @@ def _assign_all(
     Returns per-cluster pixel counts computed over the full input (not
     the fitting subsample) and centroids recomputed as weighted OKLab
     means of their assigned colors. Clusters left empty are dropped.
+    Statistics accumulate in place, so memory stays bounded by the
+    cluster count, not the unique-color count.
     """
     k = len(centroids)
     counts = [0] * k
-    assignments: List[List[Tuple[OKLab, int]]] = [[] for _ in range(k)]
+    sums = [[0.0, 0.0, 0.0] for _ in range(k)]
     for rgb, count in items:
         point = rgb_to_oklab(rgb)
         nearest = min(range(k), key=lambda c: _squared_distance(point, centroids[c]))
         counts[nearest] += count
-        assignments[nearest].append((point, count))
+        sums[nearest][0] += point[0] * count
+        sums[nearest][1] += point[1] * count
+        sums[nearest][2] += point[2] * count
 
     new_centroids: List[OKLab] = []
     new_counts: List[int] = []
-    for cluster_points, count in zip(assignments, counts):
-        if not cluster_points:
+    for idx in range(k):
+        if counts[idx] == 0:
             continue
-        total = sum(w for _, w in cluster_points)
+        total = counts[idx]
         new_centroids.append(
             (
-                sum(p[0] * w for p, w in cluster_points) / total,
-                sum(p[1] * w for p, w in cluster_points) / total,
-                sum(p[2] * w for p, w in cluster_points) / total,
+                sums[idx][0] / total,
+                sums[idx][1] / total,
+                sums[idx][2] / total,
             )
         )
-        new_counts.append(count)
+        new_counts.append(total)
     return new_centroids, new_counts
 
 
