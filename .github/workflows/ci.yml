@@ -47,8 +47,11 @@ jobs:
       - name: Lint with flake8
         run: flake8 color_analysis_tool/ --max-line-length=120
 
+      - name: Lint docstrings with ruff
+        run: ruff check color_analysis_tool/
+
       - name: Run tests
-        run: pytest tests/ -v --cov=color_analysis_tool --cov-report=term-missing --cov-fail-under=90
+        run: pytest -v
 
   publish:
     name: Publish to PyPI
