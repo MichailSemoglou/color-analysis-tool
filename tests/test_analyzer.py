@@ -397,6 +397,13 @@ class TestSaveAnalysisCss:
         assert "@theme {" in content
         assert "oklch(" in content
 
+    def test_tailwind_import_hint_names_generated_file(self, analyzer, red_image, tmp_path):
+        # The import hint must reference the file actually written
+        info = analyzer.analyze_image(red_image)
+        analyzer.save_analysis(tmp_path, info, output_format="css")
+        content = (tmp_path / "red.png_tailwind.css").read_text()
+        assert '@import "./red.png_tailwind.css"' in content
+
     def test_tailwind_uses_css_variable_keys(self, analyzer, red_image, tmp_path):
         info = analyzer.analyze_image(red_image)
         analyzer.save_analysis(tmp_path, info, output_format="css")

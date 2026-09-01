@@ -200,7 +200,7 @@ The tool generates a detailed analysis file for each image with the following in
 
 **Plain text output** (`-f txt`, default):
 
-```
+```text
 Image Analysis for example.png
 Dimensions: 100x100
 Format: PNG

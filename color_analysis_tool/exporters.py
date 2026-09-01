@@ -392,7 +392,7 @@ def _save_css(
     tw_key = re.sub(r"[^A-Za-z0-9_-]+", "-", stem)
     tw_lines = [
         f"/* Tailwind CSS v4 palette - extracted from {stem} */",
-        '/* Import after your tailwindcss import: @import "./palette.css"; */',
+        f'/* Import after your tailwindcss import: @import "./{stem}_tailwind.css"; */',
     ]
     if truncated_from:
         tw_lines.append(
