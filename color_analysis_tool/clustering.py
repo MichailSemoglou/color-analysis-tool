@@ -20,6 +20,9 @@ Reference:
   careful seeding. In *Proceedings of the Eighteenth Annual ACM-SIAM
   Symposium on Discrete Algorithms (SODA '07)* (pp. 1027-1035). Society
   for Industrial and Applied Mathematics.
+- Efraimidis, P. S., & Spirakis, P. G. (2006). Weighted random sampling
+  with a reservoir. *Information Processing Letters, 97*(5), 181-185.
+  https://doi.org/10.1016/j.ipl.2005.11.003
 """
 
 import logging
@@ -35,7 +38,7 @@ logger = logging.getLogger(__name__)
 KMEANS_SEED = 0
 
 # Working-set cap: images with more unique visible colors are reduced to
-# a weighted subsample before fitting (Efraimidis-Spirakis keys)
+# a weighted subsample before fitting (Efraimidis and Spirakis 2006)
 SAMPLE_CAP = 4096
 
 # k-means iteration bound; convergence usually stops earlier
@@ -65,7 +68,8 @@ class Cluster:
 def _subsample(items: List[Tuple[RGB, int]], cap: int, rng: random.Random) -> List[Tuple[RGB, int]]:
     """Weighted subsample without replacement via Efraimidis-Spirakis keys.
 
-    Each unique color draws the key u ** (1 / w) from the seeded RNG, so
+    The key u ** (1 / w) per item is the reservoir method of Efraimidis
+    and Spirakis (2006): each unique color draws from the seeded RNG, so
     frequent colors are likely to survive while rare colors still can.
     Deterministic for a fixed seed and input order.
     """

@@ -26,6 +26,10 @@ docstrings, and documentation of this project.
   Symposium on Discrete Algorithms (SODA ’07)* (pp. 1027–1035). Society
   for Industrial and Applied Mathematics.
 
+- Efraimidis, P. S., & Spirakis, P. G. (2006). Weighted random sampling
+  with a reservoir. *Information Processing Letters, 97*(5), 181–185.
+  https://doi.org/10.1016/j.ipl.2005.11.003
+
 ## Standards and technical reports
 
 - CIE. (2001). *Improvement to industrial colour-difference evaluation*
