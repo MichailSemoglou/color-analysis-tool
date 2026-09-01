@@ -8,7 +8,7 @@ Usage:
                    [-c COLORS] [-f {txt,json,css}]
                    [--extractor {perceptual,legacy}]
                    [--harmony-engine {oklch,hsv_legacy}]
-                   [--cmyk-profile PATH]
+                   [--cmyk-profile PATH] [--cmyk-method {icc,device_naive}]
                    input output
 
 Examples:
@@ -126,6 +126,16 @@ For more information, visit: https://github.com/MichailSemoglou/color-analysis-t
         )
     )
     parser.add_argument(
+        "--cmyk-method",
+        choices=["icc", "device_naive"],
+        default="icc",
+        dest="cmyk_method",
+        help=(
+            "CMYK conversion method (default: icc). "
+            "'device_naive' reproduces the v1 formula"
+        )
+    )
+    parser.add_argument(
         "-v", "--verbose",
         help="Enable verbose logging",
         action="store_true"
@@ -164,6 +174,7 @@ For more information, visit: https://github.com/MichailSemoglou/color-analysis-t
                 extractor=args.extractor,
                 harmony_engine=args.harmony_engine,
                 cmyk_profile=args.cmyk_profile,
+                cmyk_method=args.cmyk_method,
             )
             if image_info:
                 analyzer.save_analysis(
@@ -187,6 +198,7 @@ For more information, visit: https://github.com/MichailSemoglou/color-analysis-t
                 extractor=args.extractor,
                 harmony_engine=args.harmony_engine,
                 cmyk_profile=args.cmyk_profile,
+                cmyk_method=args.cmyk_method,
             )
             logger.info("Batch processing complete!")
         else:

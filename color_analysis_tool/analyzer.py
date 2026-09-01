@@ -48,6 +48,10 @@ VALID_SORT_OPTIONS = {"frequency", "hue", "saturation", "brightness"}
 # or the v1 exact-counting pipeline
 VALID_EXTRACTORS = {"perceptual", "legacy"}
 
+# CMYK conversion methods: ICC color management (v2 default) or the v1
+# device-naive formula
+VALID_CMYK_METHODS = {"icc", "device_naive"}
+
 # Number of top colors for which harmonies are computed
 HARMONY_LIMIT = 50
 
@@ -564,6 +568,7 @@ class ImageAnalyzer:
         extractor: str = "perceptual",
         harmony_engine: str = "oklch",
         cmyk_profile: Optional[Union[str, Path]] = None,
+        cmyk_method: str = "icc",
     ) -> Optional[ImageInfo]:
         """Analyze colors in an image file.
 
@@ -588,6 +593,8 @@ class ImageAnalyzer:
             cmyk_profile: Optional path to a custom CMYK ICC profile used
                 for the CMYK values; defaults to the bundled FOGRA39
                 profile (ISO Coated v2).
+            cmyk_method: CMYK conversion method passed to ColorConverter:
+                'icc' (default) or 'device_naive' (the v1 formula).
 
         Returns:
             ImageInfo object containing analysis results, or None if analysis
@@ -598,8 +605,9 @@ class ImageAnalyzer:
         Raises:
             ValueError: If sort_by is not a recognised sort option, if
                 max_colors is neither 'auto' nor an integer in 0-256, if
-                extractor is not 'perceptual' or 'legacy', or if
-                harmony_engine is not 'oklch' or 'hsv_legacy'.
+                extractor is not 'perceptual' or 'legacy', if
+                harmony_engine is not 'oklch' or 'hsv_legacy', or if
+                cmyk_method is not 'icc' or 'device_naive'.
             OSError: If a custom cmyk_profile path cannot be opened.
         """
         if sort_by not in VALID_SORT_OPTIONS:
@@ -627,6 +635,11 @@ class ImageAnalyzer:
             raise ValueError(
                 f"harmony_engine must be one of {ColorHarmony.VALID_ENGINES}, "
                 f"got {harmony_engine!r}"
+            )
+        if cmyk_method not in VALID_CMYK_METHODS:
+            raise ValueError(
+                f"cmyk_method must be one of {VALID_CMYK_METHODS}, "
+                f"got {cmyk_method!r}"
             )
 
         file_path = Path(file_path)
@@ -719,7 +732,7 @@ class ImageAnalyzer:
 
         # One ICC transform for the whole palette, not one per color
         cmyk_values = ColorConverter.rgb_to_cmyk_batch(
-            [rgb for rgb, _ in entries], profile=cmyk_profile
+            [rgb for rgb, _ in entries], method=cmyk_method, profile=cmyk_profile
         )
 
         colors: List[ColorInfo] = []
@@ -797,6 +810,7 @@ class ImageAnalyzer:
         extractor: str = "perceptual",
         harmony_engine: str = "oklch",
         cmyk_profile: Optional[Union[str, Path]] = None,
+        cmyk_method: str = "icc",
     ) -> None:
         """Process all supported images in a directory recursively.
 
@@ -811,6 +825,7 @@ class ImageAnalyzer:
             extractor: Palette extraction engine, as in analyze_image.
             harmony_engine: Harmony engine, as in analyze_image.
             cmyk_profile: Optional path to a custom CMYK ICC profile.
+            cmyk_method: CMYK conversion method, as in analyze_image.
         """
         input_dir = Path(input_dir)
         output_dir = Path(output_dir)
@@ -826,6 +841,7 @@ class ImageAnalyzer:
                     extractor=extractor,
                     harmony_engine=harmony_engine,
                     cmyk_profile=cmyk_profile,
+                    cmyk_method=cmyk_method,
                 )
                 if image_info:
                     try:

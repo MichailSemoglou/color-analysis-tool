@@ -947,6 +947,18 @@ class TestExtractors:
         )
         assert result.cmyk_profile == "ISOcoated_v2_eci.icc"
 
+    def test_cmyk_method_device_naive(self, analyzer, red_image):
+        result = analyzer.analyze_image(red_image, cmyk_method="device_naive")
+        assert result.colors[0].cmyk == (0, 100, 100, 0)
+
+    def test_cmyk_method_default_is_icc(self, analyzer, red_image):
+        result = analyzer.analyze_image(red_image)
+        assert result.colors[0].cmyk == ColorConverter.rgb_to_cmyk(255, 0, 0)
+
+    def test_invalid_cmyk_method_raises(self, analyzer, red_image):
+        with pytest.raises(ValueError, match="cmyk_method"):
+            analyzer.analyze_image(red_image, cmyk_method="magic")
+
 
 # ── v2 output labels ───────────────────────────────────────────────────────────
 

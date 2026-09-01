@@ -72,6 +72,14 @@ remains available:
 ColorConverter.rgb_to_cmyk(r, g, b, method="device_naive")
 ```
 
+The v1 formula is also selectable end to end, so reports can carry
+v1-style CMYK values:
+
+```python
+analyzer.analyze_image("photo.jpg", cmyk_method="device_naive")
+color-analysis photo.jpg output/ --cmyk-method device_naive
+```
+
 A different press condition can be supplied with `--cmyk-profile PATH`
 or the `profile` argument. The profile behind the values is recorded in
 JSON output (`cmyk_profile`) and in the CMYK label of text reports.

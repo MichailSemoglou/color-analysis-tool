@@ -275,6 +275,17 @@ class TestEngineFlags:
         data = json.loads((out / "red.png_analysis.json").read_text())
         assert data["cmyk_profile"] == "ISOcoated_v2_eci.icc"
 
+    def test_cmyk_method_flag(self, monkeypatch, red_image, tmp_path):
+        out = tmp_path / "out"
+        run_cli(monkeypatch, red_image, out, "-f", "json", "--cmyk-method", "device_naive")
+        data = json.loads((out / "red.png_analysis.json").read_text())
+        assert data["colors"][0]["cmyk"] == [0, 100, 100, 0]
+
+    def test_invalid_cmyk_method_rejected(self, monkeypatch, red_image, tmp_path):
+        with pytest.raises(SystemExit) as exc_info:
+            run_cli(monkeypatch, red_image, tmp_path / "out", "--cmyk-method", "magic")
+        assert exc_info.value.code == 2
+
     def test_batch_with_engine_flags(self, monkeypatch, image_dir, tmp_path):
         out = tmp_path / "out"
         run_cli(

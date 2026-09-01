@@ -15,7 +15,7 @@ Extract dominant palettes, compute perceptual color harmonies, and export design
 
 - **Complete, not fragmented**: perceptual palette extraction (k-means++ in OKLab), harmony reasoning in OKLCh (complementary, analogous, triadic, tetradic), and multi-space conversion (RGB, HEX, CMYK, OKLab, OKLCh) in one API call
 - **Design-ready output**: export to CSS custom properties (HEX and OKLCH), W3C Design Tokens, and Tailwind CSS v4 `@theme`, alongside plain text and JSON
-- **Research-ready**: WCAG 2.2 and APCA contrast reporting, ICC-based CMYK (FOGRA39), Zenodo DOI, ORCID attribution, deterministic output, and 324 unit tests
+- **Research-ready**: WCAG 2.2 and APCA contrast reporting, ICC-based CMYK (FOGRA39), Zenodo DOI, ORCID attribution, deterministic output, and 329 unit tests
 
 ## Quickstart
 
@@ -46,7 +46,7 @@ The Image Color Analysis Tool addresses this gap by unifying color extraction, h
 - **Format Support**: Works with PNG, JPG, TIFF, WebP, and PSD files
 - **Progress Tracking**: Visual progress bars for processing status
 - **CLI and API**: Use as a command-line tool or import as a Python library
-- **Tested**: 324 unit tests covering converters, harmonies, clustering, accessibility, analysis, CLI, and all output formats
+- **Tested**: 329 unit tests covering converters, harmonies, clustering, accessibility, analysis, CLI, and all output formats
 
 ## Installation
 
@@ -116,8 +116,8 @@ color-analysis path/to/image.jpg output/directory -f json
 # Export design tokens (CSS custom properties, W3C Design Tokens, Tailwind v4 @theme)
 color-analysis path/to/image.jpg output/directory -f css
 
-# Reproduce v1 results (exact counting, HSV harmonies)
-color-analysis path/to/image.jpg output/directory --extractor legacy --harmony-engine hsv_legacy
+# Reproduce v1 results (exact counting, HSV harmonies, naive CMYK)
+color-analysis path/to/image.jpg output/directory --extractor legacy --harmony-engine hsv_legacy --cmyk-method device_naive
 
 # Combine options
 color-analysis path/to/image/directory output/directory -c 64 -s hue -f json -v

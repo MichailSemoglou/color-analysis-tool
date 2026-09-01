@@ -29,10 +29,11 @@ The perceptual core release: palette extraction, harmony computation, and CMYK c
 - OKLCH values in text and JSON reports, as CSS custom properties (`--color-N-oklch`), in the design token `$extensions`, and as the value notation of the Tailwind v4 `@theme` artifact
 - Extended color space conversions on `ColorConverter`: `rgb_to_oklab`, `rgb_to_oklch`, `rgb_to_xyz`, `rgb_to_lab`
 - `--cmyk-profile PATH` for custom ICC destination profiles; the profile used is recorded in JSON output and text reports
+- `--cmyk-method device_naive` (CLI) and `cmyk_method=` (API) make the v1 CMYK formula selectable end to end
 - `ColorConverter.rgb_to_cmyk_batch` converts a whole palette in one ICC transform; `analyze_image` now uses it, cutting per-image conversion time from one transform per color to one per image
 - New `color_spaces`, `clustering`, and `accessibility` modules holding the perceptual color math, the palette engine, and the contrast metrics
 - Bundled ISO Coated v2 (ECI) ICC profile under `color_analysis_tool/profiles/`, with attribution, license note, and checksum
-- Tests for the new engines and output fields (324 total)
+- Tests for the new engines and output fields (329 total)
 
 ### Fixed
 
