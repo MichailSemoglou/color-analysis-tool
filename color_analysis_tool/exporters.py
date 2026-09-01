@@ -2,7 +2,7 @@
 
 This module holds the output layer of the tool. save_analysis writes an
 ImageInfo as a text report, a JSON document, or three design-token files
-(CSS custom properties, W3C Design Tokens JSON, Tailwind config snippet).
+(CSS custom properties, W3C Design Tokens JSON, Tailwind v4 @theme CSS).
 The public entry point remains ImageAnalyzer.save_analysis, which
 delegates here.
 """
@@ -16,9 +16,10 @@ import os
 import re
 from dataclasses import replace
 from pathlib import Path
-from typing import TYPE_CHECKING, Dict, Optional, Union
+from typing import TYPE_CHECKING, Dict, Optional, Tuple, Union
 
 if TYPE_CHECKING:
+    from .accessibility import ContrastAgainst, ContrastReport
     from .analyzer import ImageInfo
 
 logger = logging.getLogger(__name__)
@@ -59,6 +60,44 @@ def _safe_output_stem(name: str) -> str:
     return safe
 
 
+def _oklch_string(oklch: Tuple[float, float, float]) -> str:
+    """CSS Color 4 oklch() notation for an OKLCh tuple."""
+    return f"oklch({oklch[0]} {oklch[1]} {oklch[2]})"
+
+
+def _wcag_entry(contrast: "ContrastAgainst") -> Dict[str, object]:
+    """WCAG 2.2 fields of one contrast measurement as a JSON-ready dict."""
+    return {
+        "ratio": contrast.wcag_ratio,
+        "aa": contrast.wcag_aa,
+        "aaa": contrast.wcag_aaa,
+    }
+
+
+def _wcag_json(report: "ContrastReport") -> Dict[str, object]:
+    """WCAG 2.2 contrast report as a JSON-ready dict."""
+    return {
+        "on_white": _wcag_entry(report.on_white),
+        "on_black": _wcag_entry(report.on_black),
+        "vs_dominant": (
+            _wcag_entry(report.vs_dominant) if report.vs_dominant else None
+        ),
+    }
+
+
+def _apca_json(report: "ContrastReport") -> Dict[str, object]:
+    """APCA Lc values as a JSON-ready dict, labeled experimental.
+
+    APCA is a candidate method for future WCAG versions, not a WCAG 2.2
+    conformance criterion; the status field must travel with the values.
+    """
+    return {
+        "status": "experimental",
+        "on_white": report.on_white.apca_lc,
+        "on_black": report.on_black.apca_lc,
+    }
+
+
 def save_analysis(
     output_dir: Union[str, Path],
     image_info: ImageInfo,
@@ -73,9 +112,9 @@ def save_analysis(
         output_dir: Root directory where analysis files will be saved.
         image_info: ImageInfo object containing the analysis results.
         sort_by: The sorting criterion used (recorded in the output).
-        output_format: Output format — 'txt' (default), 'json', or 'css'.
+        output_format: Output format - 'txt' (default), 'json', or 'css'.
             'css' emits three files: a CSS custom-properties stylesheet,
-            a W3C Design Token JSON file, and a Tailwind config snippet.
+            a W3C Design Token JSON file, and a Tailwind CSS v4 @theme file.
         input_base: Base input directory used to mirror subdirectory
             structure inside output_dir for batch processing.
         file_path: Original file path; used with input_base to compute
@@ -97,7 +136,7 @@ def save_analysis(
             rel = file_path.parent.relative_to(input_base)
             output_dir = output_dir / rel
         except ValueError:
-            pass  # file_path not under input_base — write flat
+            pass  # file_path not under input_base - write flat
 
     output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -128,6 +167,15 @@ def _save_txt(
     sort_by: str,
     truncated_from: Optional[int] = None,
 ) -> None:
+    """Write the analysis as a plain text report.
+
+    Args:
+        output_file: Destination file path.
+        image_info: ImageInfo object containing the analysis results.
+        sort_by: The sorting criterion used (recorded in the header).
+        truncated_from: When set, the original color count before
+            truncation; a note is recorded in the report.
+    """
     with output_file.open('w', encoding='utf-8') as f:
         f.write(f"Image Analysis for {_sanitize_display_name(image_info.filename)}\n")
         f.write(f"Dimensions: {image_info.dimensions[0]}x{image_info.dimensions[1]}\n")
@@ -147,8 +195,34 @@ def _save_txt(
             f.write(f"\nColor #{idx}:\n")
             f.write(f"  RGB: {color.rgb}\n")
             f.write(f"  HEX: {color.hex}\n")
-            f.write(f"  CMYK: {color.cmyk}\n")
-            f.write(f"  Frequency: {color.frequency}%\n")
+            f.write(f"  CMYK ({image_info.cmyk_profile}): {color.cmyk}\n")
+            f.write(f"  OKLCH: {_oklch_string(color.oklch)}\n")
+            f.write(f"  Weight: {color.weight}%\n")
+
+            if color.contrast:
+                on_white = color.contrast.on_white
+                on_black = color.contrast.on_black
+                f.write(
+                    f"  Contrast on white: {on_white.wcag_ratio}:1 "
+                    f"(AA: {'yes' if on_white.wcag_aa else 'no'}, "
+                    f"AAA: {'yes' if on_white.wcag_aaa else 'no'})\n"
+                )
+                f.write(
+                    f"  Contrast on black: {on_black.wcag_ratio}:1 "
+                    f"(AA: {'yes' if on_black.wcag_aa else 'no'}, "
+                    f"AAA: {'yes' if on_black.wcag_aaa else 'no'})\n"
+                )
+                if color.contrast.vs_dominant:
+                    vs_dom = color.contrast.vs_dominant
+                    f.write(
+                        f"  Contrast vs dominant: {vs_dom.wcag_ratio}:1 "
+                        f"(AA: {'yes' if vs_dom.wcag_aa else 'no'}, "
+                        f"AAA: {'yes' if vs_dom.wcag_aaa else 'no'})\n"
+                    )
+                f.write(
+                    f"  APCA Lc (experimental): on white {on_white.apca_lc}, "
+                    f"on black {on_black.apca_lc}\n"
+                )
 
             if color.harmonies:
                 f.write("\n  Color Harmonies:\n")
@@ -166,18 +240,31 @@ def _save_json(
     sort_by: str,
     truncated_from: Optional[int] = None,
 ) -> None:
+    """Write the analysis as a JSON document.
+
+    Args:
+        output_file: Destination file path.
+        image_info: ImageInfo object containing the analysis results.
+        sort_by: The sorting criterion used (recorded as sorted_by).
+        truncated_from: When set, the original color count before
+            truncation; recorded under the truncated_from key.
+    """
     data: Dict[str, object] = {
         "filename": image_info.filename,
         "dimensions": {"width": image_info.dimensions[0], "height": image_info.dimensions[1]},
         "format": image_info.format,
         "sorted_by": sort_by,
+        "cmyk_profile": image_info.cmyk_profile,
         "dominant_color": list(image_info.dominant_color) if image_info.dominant_color else None,
         "colors": [
             {
                 "rgb": list(c.rgb),
                 "hex": c.hex,
                 "cmyk": list(c.cmyk),
-                "frequency": c.frequency,
+                "weight": c.weight,
+                "oklch": list(c.oklch),
+                "wcag": _wcag_json(c.contrast) if c.contrast else None,
+                "apca": _apca_json(c.contrast) if c.contrast else None,
                 "harmonies": {k: [list(v) for v in vs] for k, vs in c.harmonies.items()},
             }
             for c in image_info.colors
@@ -196,12 +283,12 @@ def _save_css(
     sort_by: str,
     truncated_from: Optional[int] = None,
 ) -> None:
-    """Save palette as CSS custom properties, W3C Design Tokens, and Tailwind config.
+    """Save palette as CSS custom properties, W3C Design Tokens, and Tailwind v4 theme.
 
     Three files are written to output_dir:
-    - {filename}_tokens.css   — CSS custom properties
-    - {filename}_tokens.json  — W3C Design Token Community Group format
-    - {filename}_tailwind.js  — Tailwind CSS colors config snippet
+    - {filename}_tokens.css   - CSS custom properties (HEX and OKLCH)
+    - {filename}_tokens.json  - W3C Design Token Community Group format
+    - {filename}_tailwind.css - Tailwind CSS v4 @theme block
 
     Args:
         output_dir: Directory to write the three token files into.
@@ -212,6 +299,7 @@ def _save_css(
     """
     # Deferred import: analyzer imports this module for delegation, so
     # importing analyzer here at module level would be circular
+    from . import color_spaces
     from .analyzer import ColorConverter
 
     stem = _safe_output_stem(image_info.filename)
@@ -232,11 +320,25 @@ def _save_css(
         r, g, b = color.rgb
         css_lines.append(
             f"  --color-{idx}: {color.hex};  "
-            f"/* RGB({r}, {g}, {b}) · {color.frequency}% */"
+            f"/* RGB({r}, {g}, {b}) · {color.weight}% */"
         )
+        css_lines.append(f"  --color-{idx}-oklch: {_oklch_string(color.oklch)};")
+        if color.contrast:
+            css_lines.append(
+                f"  --color-{idx}-contrast-on-white: "
+                f"{color.contrast.on_white.wcag_ratio};"
+            )
+            css_lines.append(
+                f"  --color-{idx}-contrast-on-black: "
+                f"{color.contrast.on_black.wcag_ratio};"
+            )
     if image_info.dominant_color:
         css_lines.append(f"  --color-dominant: "
                          f"{ColorConverter.rgb_to_hex(image_info.dominant_color)};")
+        css_lines.append(
+            f"  --color-dominant-oklch: "
+            f"{_oklch_string(color_spaces.normalize_oklch(color_spaces.rgb_to_oklch(image_info.dominant_color)))};"
+        )
     css_lines.append("}")
     css_file = output_dir / f"{stem}_tokens.css"
     css_file.write_text("\n".join(css_lines), encoding="utf-8")
@@ -246,19 +348,28 @@ def _save_css(
     # Spec: https://design-tokens.github.io/community-group/format/
     token_dict: Dict[str, object] = {}
     for idx, color in enumerate(colors, 1):
-        token_dict[f"color-{idx}"] = {
+        token: Dict[str, object] = {
             "$type": "color",
             "$value": color.hex,
             "$description": (
                 f"RGB({color.rgb[0]}, {color.rgb[1]}, {color.rgb[2]}) · "
-                f"{color.frequency}% of image"
+                f"{color.weight}% of image"
             ),
         }
+        if color.contrast:
+            token["$extensions"] = {
+                "com.color-analysis-tool": {
+                    "oklch": _oklch_string(color.oklch),
+                    "wcag": _wcag_json(color.contrast),
+                    "apca": _apca_json(color.contrast),
+                }
+            }
+        token_dict[f"color-{idx}"] = token
     if image_info.dominant_color:
         token_dict["color-dominant"] = {
             "$type": "color",
             "$value": ColorConverter.rgb_to_hex(image_info.dominant_color),
-            "$description": "Most frequent color in the image",
+            "$description": "Highest-weight color in the image",
         }
     metadata: Dict[str, object] = {"source": stem}
     if truncated_from:
@@ -272,43 +383,34 @@ def _save_css(
     tokens_file.write_text(json.dumps(tokens_wrapper, indent=2), encoding="utf-8")
     logger.info(f"Design tokens saved to {tokens_file}")
 
-    # ── Tailwind CSS colors config snippet ────────────────────────────
-    # The key is derived from the filename and becomes a class-name
-    # fragment, so replace runs of characters invalid in CSS/Tailwind
-    # identifiers (spaces, dots, etc.) with hyphens
+    # ── Tailwind CSS v4 @theme block ──────────────────────────────────
+    # Tailwind v4 is CSS-first: colors live in an @theme block, not in
+    # tailwind.config.js. Values use OKLCH, the notation of Tailwind's
+    # own default palette. The key derives from the filename and becomes
+    # a class-name fragment, so runs of characters invalid in CSS
+    # identifiers (spaces, dots, etc.) are replaced with hyphens
     tw_key = re.sub(r"[^A-Za-z0-9_-]+", "-", stem)
-    tw_entries = [
-        f"  '{idx}': '{color.hex}',  // {color.frequency}%"
-        for idx, color in enumerate(colors, 1)
-    ]
-    if image_info.dominant_color:
-        tw_entries.append(
-            f"  'dominant': '{ColorConverter.rgb_to_hex(image_info.dominant_color)}',"
-        )
     tw_lines = [
-        f"// Tailwind CSS palette — extracted from {stem}",
-        "// Paste inside the `colors` key of your tailwind.config.js",
+        f"/* Tailwind CSS v4 palette - extracted from {stem} */",
+        '/* Import after your tailwindcss import: @import "./palette.css"; */',
     ]
     if truncated_from:
         tw_lines.append(
-            f"// Note: truncated to the first {MAX_OUTPUT_COLORS} "
-            f"of {truncated_from} colors"
+            f"/* Note: truncated to the first {MAX_OUTPUT_COLORS} "
+            f"of {truncated_from} colors */"
         )
-    tw_lines += [
-        "module.exports = {",
-        "  theme: {",
-        "    extend: {",
-        "      colors: {",
-        f"        '{tw_key}': {{",
-    ]
-    tw_lines.extend(f"          {e}" for e in tw_entries)
-    tw_lines += [
-        "        },",
-        "      },",
-        "    },",
-        "  },",
-        "};",
-    ]
-    tw_file = output_dir / f"{stem}_tailwind.js"
+    tw_lines.append("@theme {")
+    for idx, color in enumerate(colors, 1):
+        tw_lines.append(
+            f"  --color-{tw_key}-{idx}: {_oklch_string(color.oklch)};  "
+            f"/* {color.weight}% */"
+        )
+    if image_info.dominant_color:
+        tw_lines.append(
+            f"  --color-{tw_key}-dominant: "
+            f"{_oklch_string(color_spaces.normalize_oklch(color_spaces.rgb_to_oklch(image_info.dominant_color)))};"
+        )
+    tw_lines.append("}")
+    tw_file = output_dir / f"{stem}_tailwind.css"
     tw_file.write_text("\n".join(tw_lines), encoding="utf-8")
-    logger.info(f"Tailwind config saved to {tw_file}")
+    logger.info(f"Tailwind theme saved to {tw_file}")

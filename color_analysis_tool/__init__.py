@@ -1,17 +1,19 @@
-"""
-Color Analysis Tool
-====================
+"""Color Analysis Tool.
 
-A comprehensive Python tool for analyzing colors in images, providing detailed
-information about color distributions, harmonies, and various color space
-conversions (RGB, HEX, CMYK).
+A Python tool for analyzing colors in images, providing detailed
+information about color distributions, perceptual harmonies, and color
+space conversions (RGB, HEX, CMYK, OKLab, OKLCh).
 
 Features:
+- Perceptual palette extraction: deterministic k-means++ in OKLab
 - Single image and batch processing capabilities
-- Color frequency analysis with multiple sorting options
 - Dominant color detection
-- Color harmony calculations (complementary, analogous, triadic, tetradic)
-- Multiple color space conversions
+- Color harmony calculations in OKLCh (complementary, analogous,
+  triadic, tetradic)
+- WCAG 2.2 contrast ratios and experimental APCA Lc values
+- ICC-based CMYK conversion (FOGRA39)
+- Design token export (CSS custom properties, W3C Design Tokens,
+  Tailwind CSS v4)
 - Support for various image formats (PNG, JPG, TIFF, WebP, PSD)
 
 Basic Usage:
