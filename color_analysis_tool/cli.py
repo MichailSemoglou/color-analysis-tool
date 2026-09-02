@@ -38,7 +38,7 @@ def main() -> None:
     """Main entry point for the CLI."""
     parser = argparse.ArgumentParser(
         prog="color-analysis",
-        description="Enhanced Image Color Analysis Tool - Analyze colors in images with detailed reports",
+        description="Deterministic, color-managed color analysis for computational color research",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
