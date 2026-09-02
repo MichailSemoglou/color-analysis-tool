@@ -1,7 +1,5 @@
 # Image Color Analysis Tool
 
-> The citable, pip-installable standard for image color analysis.
-
 [![CI](https://github.com/MichailSemoglou/color-analysis-tool/actions/workflows/ci.yml/badge.svg)](https://github.com/MichailSemoglou/color-analysis-tool/actions/workflows/ci.yml)
 [![PyPI version](https://badge.fury.io/py/color-analysis-tool.svg)](https://badge.fury.io/py/color-analysis-tool)
 [![PyPI Downloads](https://static.pepy.tech/personalized-badge/color-analysis-tool?period=total&units=INTERNATIONAL_SYSTEM&left_color=GREY&right_color=BLUE&left_text=downloads)](https://pepy.tech/projects/color-analysis-tool)
@@ -9,13 +7,9 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 
-Extract dominant palettes, compute perceptual color harmonies, and export design-ready tokens: in a single reproducible command, with a DOI you can cite.
+A command-line tool and Python library for extracting color palettes from images, computing color harmonies, and exporting the results as plain text, JSON, or design tokens. Palette extraction is deterministic k-means++ in OKLab (Ottosson 2020) with CIEDE2000 near-duplicate merging (Sharma, Wu, and Dalal 2005); harmonies rotate hue in OKLCh with CSS Color 4 gamut mapping. Built for computational color research, with deterministic output and methods validated against published reference data.
 
-**Why this repo:**
-
-- **Complete, not fragmented**: perceptual palette extraction (k-means++ in OKLab), harmony reasoning in OKLCh (complementary, analogous, triadic, tetradic), and multi-space conversion (RGB, HEX, CMYK, OKLab, OKLCh) in one API call
-- **Design-ready output**: export to CSS custom properties (HEX and OKLCH), W3C Design Tokens, and Tailwind CSS v4 `@theme`, alongside plain text and JSON
-- **Research-ready**: WCAG 2.2 and APCA contrast reporting, ICC-based CMYK (FOGRA39), Zenodo DOI, ORCID attribution, deterministic output, and 329 unit tests
+v2.0.1 · released September 2026 · MIT
 
 ## Quickstart
 
@@ -29,6 +23,10 @@ color-analysis photo.jpg output/
 Computational analysis of visual color is a foundational operation in digital humanities, computational aesthetics, design research, and cultural analytics, yet the tooling landscape forces practitioners into an uncomfortable choice: use JavaScript-first browser libraries (ColorThief, Vibrant.js) that resist integration with Python scientific stacks, or assemble ad hoc combinations of Pillow, NumPy, and custom scripts that are neither reproducible nor citable. Existing Python color extraction libraries provide palette extraction without the color-theory reasoning (harmonic relationships, multi-space conversions, design-token output) that designers, art historians, and accessibility researchers require as primary outputs.
 
 The Image Color Analysis Tool addresses this gap by unifying color extraction, harmony computation, multi-space conversion, and design-token export into a single pip-installable Python library with a first-class CLI, deterministic palette extraction, and structured output formats. A researcher can characterize the complete color composition of an image corpus (dominant palette, perceptual harmonies, print-ready CMYK values, and CSS-ready design tokens) in a single reproducible command, and cite that operation with a persistent DOI.
+
+## Related projects
+
+color-analysis-tool is a research instrument for computational color science. The numerical core is validated against published reference data (the Sharma CIEDE2000 test set, Ottosson’s OKLab constants), and the palette engine is deterministic by construction. Methods are documented against their primary sources, so results can be replicated and checked. Designers are served through standards-track output in OKLCh per CSS Color 4: W3C Design Tokens, CSS custom properties, and Tailwind CSS v4 `@theme`. For interactive palette work, theme suggestions, PDF swatch reports, SVG input, and a hosted workflow (REST API, web interface, TypeScript client), see [ChromaSpec](https://github.com/MichailSemoglou/chromaspec), the sister project built for design teams.
 
 ## Features
 
@@ -46,7 +44,7 @@ The Image Color Analysis Tool addresses this gap by unifying color extraction, h
 - **Format Support**: Works with PNG, JPG, TIFF, WebP, and PSD files
 - **Progress Tracking**: Visual progress bars for processing status
 - **CLI and API**: Use as a command-line tool or import as a Python library
-- **Tested**: 329 unit tests covering converters, harmonies, clustering, accessibility, analysis, CLI, and all output formats
+- **Tested**: 335 unit tests covering converters, harmonies, clustering, accessibility, analysis, CLI, and all output formats
 
 ## Installation
 
@@ -233,7 +231,7 @@ Color #1:
       RGB(42, 157, 143)
       RGB(117, 133, 199)
       RGB(188, 110, 131)
-      RGB(158, 146, 60)
+      RGB(158, 136, 57)
 
 Color #2:
   ...
@@ -278,7 +276,7 @@ Color #2:
           [42, 157, 143],
           [117, 133, 199],
           [188, 110, 131],
-          [158, 146, 60]
+          [158, 136, 57]
         ]
       }
     }
@@ -416,7 +414,7 @@ If you use this software in your research, please cite it using the metadata in 
 @software{semoglou_color_analysis_tool,
   author       = {Semoglou, Michail},
   title        = {Color Analysis Tool},
-  version      = {2.0.0},
+  version      = {2.0.1},
   year         = {2026},
   url          = {https://github.com/MichailSemoglou/color-analysis-tool},
   doi          = {10.5281/zenodo.17848058}

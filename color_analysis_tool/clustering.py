@@ -30,7 +30,15 @@ import random
 from dataclasses import dataclass
 from typing import Dict, List, Tuple
 
-from .color_spaces import RGB, OKLab, delta_e_ciede2000, oklab_to_lab, oklab_to_rgb, rgb_to_oklab
+from .color_spaces import (
+    RGB,
+    OKLab,
+    delta_e_ciede2000,
+    gamut_map_oklch,
+    oklab_to_lab,
+    oklab_to_oklch,
+    rgb_to_oklab,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -57,7 +65,8 @@ class Cluster:
     """One palette entry produced by the perceptual engine.
 
     Attributes:
-        rgb: Representative color of the cluster (centroid mapped to sRGB)
+        rgb: Representative color of the cluster (centroid gamut-mapped to
+            sRGB, hue-preserving)
         weight: Percentage of visible pixels covered by the cluster (0-100)
     """
 
@@ -219,6 +228,17 @@ def _merge_near_duplicates(
             return centroids, counts
 
 
+def _centroid_to_rgb(centroid: OKLab) -> RGB:
+    """Map a cluster centroid to sRGB, preserving hue and lightness.
+
+    A centroid averaged from in-gamut colors can still fall outside the
+    sRGB gamut; clipping it with oklab_to_rgb would shift its hue. Route
+    through OKLCh and reduce chroma instead, per the CSS Color 4
+    gamut-mapping approach used for harmony colors.
+    """
+    return gamut_map_oklch(oklab_to_oklch(centroid))
+
+
 def extract_palette(counts: Dict[RGB, int], k: int, seed: int = KMEANS_SEED) -> List[Cluster]:
     """Cluster unique visible colors into a perceptual palette.
 
@@ -267,7 +287,7 @@ def extract_palette(counts: Dict[RGB, int], k: int, seed: int = KMEANS_SEED) -> 
     centroids, exact_counts = _merge_near_duplicates(centroids, exact_counts)
 
     clusters = [
-        Cluster(rgb=oklab_to_rgb(centroid), weight=round(100 * count / total, 2))
+        Cluster(rgb=_centroid_to_rgb(centroid), weight=round(100 * count / total, 2))
         for centroid, count in zip(centroids, exact_counts)
     ]
     clusters.sort(key=lambda c: (-c.weight, c.rgb))

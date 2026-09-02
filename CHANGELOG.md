@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.1] - 2026-09-02
+
+### Fixed
+
+- Cluster representative colors no longer clip out-of-gamut centroids: a centroid averaged from in-gamut colors can still fall outside sRGB, and clipping shifted its hue. Centroids now convert through OKLCh and reduce chroma until they fit, the same CSS Color 4 gamut mapping the harmony engine uses
+- README example outputs: corrected the fourth tetradic harmony of `#2a9d8f` to `RGB(158, 136, 57)` instead of `RGB(158, 146, 60)`
+
+### Added
+
+- `oklab_to_oklch` conversion in the `color_spaces` module, exact for out-of-gamut inputs
+
 ## [2.0.0] - 2026-09-01
 
 The perceptual core release: palette extraction, harmony computation, and CMYK conversion move to perceptually uniform color science (OKLab, OKLCh, ICC color management), and an accessibility report joins the text, JSON, and design-token outputs. See [MIGRATION.md](MIGRATION.md) for upgrade notes.
@@ -178,6 +189,7 @@ The perceptual core release: palette extraction, harmony computation, and CMYK c
 - PEP 621 compliant packaging with `pyproject.toml`
 - Type hints throughout the codebase
 
+[2.0.1]: https://github.com/MichailSemoglou/color-analysis-tool/compare/v2.0.0...v2.0.1
 [2.0.0]: https://github.com/MichailSemoglou/color-analysis-tool/compare/v1.4.0...v2.0.0
 [1.4.0]: https://github.com/MichailSemoglou/color-analysis-tool/compare/v1.3.0...v1.4.0
 [1.3.0]: https://github.com/MichailSemoglou/color-analysis-tool/compare/v1.2.0...v1.3.0

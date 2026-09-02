@@ -8,13 +8,20 @@ from color_analysis_tool.clustering import (
     SAMPLE_CAP,
     Cluster,
     _assign_all,
+    _centroid_to_rgb,
     _fit_kmeans,
     _init_kmeans_plus_plus,
     _merge_near_duplicates,
     _subsample,
     extract_palette,
 )
-from color_analysis_tool.color_spaces import rgb_to_oklab
+from color_analysis_tool.color_spaces import (
+    oklab_to_oklch,
+    oklab_to_rgb,
+    oklch_to_oklab,
+    rgb_to_oklab,
+    rgb_to_oklch,
+)
 
 
 def _spread_colors(n):
@@ -187,3 +194,34 @@ class TestDegenerateClusteringPaths:
         ]
         centroids = _fit_kmeans(points, [1, 1, 1], k=2, rng=random.Random(0))
         assert len(centroids) == 2
+
+
+class TestCentroidToRgb:
+    def test_in_gamut_centroid_round_trips(self):
+        centroid = rgb_to_oklab((42, 157, 143))
+        assert _centroid_to_rgb(centroid) == (42, 157, 143)
+
+    def test_out_of_gamut_centroid_preserves_hue_and_lightness(self):
+        # oklch(0.65, 0.5, 140) is far outside sRGB; clipping would shift
+        # the hue, chroma reduction keeps it
+        centroid = oklch_to_oklab((0.65, 0.5, 140.0))
+        lightness, _, hue = rgb_to_oklch(_centroid_to_rgb(centroid))
+        assert lightness == pytest.approx(0.65, abs=0.02)
+        assert hue == pytest.approx(140.0, abs=1.0)
+
+
+class TestExtractPaletteGamutMapping:
+    def test_out_of_gamut_centroid_is_mapped_not_clipped(self):
+        # A 50/50 mix of white and a saturated red has an OKLab mean
+        # outside the sRGB gamut; with k=1 that mean is the centroid
+        counts = {(255, 255, 255): 50, (255, 0, 54): 50}
+        clusters = extract_palette(counts, k=1)
+        assert len(clusters) == 1
+        lab_a = rgb_to_oklab((255, 255, 255))
+        lab_b = rgb_to_oklab((255, 0, 54))
+        centroid = tuple((x + y) / 2 for x, y in zip(lab_a, lab_b))
+        assert oklab_to_rgb(centroid) != clusters[0].rgb  # clipping would differ
+        want_lightness, _, want_hue = oklab_to_oklch(centroid)
+        lightness, _, hue = rgb_to_oklch(clusters[0].rgb)
+        assert lightness == pytest.approx(want_lightness, abs=0.02)
+        assert hue == pytest.approx(want_hue, abs=1.0)
