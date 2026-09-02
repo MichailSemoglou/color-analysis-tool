@@ -86,6 +86,24 @@ class TestRgbToOklch:
         assert lab == pytest.approx(cs.rgb_to_oklab((18, 52, 86)), abs=1e-12)
 
 
+class TestOklabToOklch:
+    def test_matches_rgb_to_oklch(self):
+        rgb = (18, 52, 86)
+        via_oklab = cs.oklab_to_oklch(cs.rgb_to_oklab(rgb))
+        assert via_oklab == pytest.approx(cs.rgb_to_oklch(rgb), abs=1e-12)
+
+    def test_out_of_gamut_input_not_clamped(self):
+        # oklch(0.65, 0.5, 140) is far outside sRGB; the conversion must
+        # stay exact instead of clipping into the gamut
+        lab = cs.oklch_to_oklab((0.65, 0.5, 140.0))
+        assert cs.oklab_to_oklch(lab) == pytest.approx((0.65, 0.5, 140.0), abs=1e-9)
+
+    def test_achromatic_reports_zero_hue(self):
+        _, chroma, hue = cs.oklab_to_oklch((0.5, 0.0, 0.0))
+        assert chroma == 0.0
+        assert hue == 0.0
+
+
 class TestNormalizeOklch:
     def test_rounds_to_four_decimals(self):
         assert cs.normalize_oklch((0.123456789, 0.234567891, 123.4567891)) == (

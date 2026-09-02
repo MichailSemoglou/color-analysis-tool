@@ -132,7 +132,22 @@ def rgb_to_oklch(rgb: RGB) -> OKLCh:
     Returns:
         OKLCh tuple (L in 0-1, C >= 0, H in degrees 0-360)
     """
-    lightness, a, b = rgb_to_oklab(rgb)
+    return oklab_to_oklch(rgb_to_oklab(rgb))
+
+
+def oklab_to_oklch(lab: OKLab) -> OKLCh:
+    """Convert OKLab to OKLCh (cylindrical OKLab).
+
+    Exact for out-of-gamut inputs, so cluster centroids can be
+    gamut-mapped in OKLCh rather than clipped by oklab_to_rgb.
+
+    Args:
+        lab: OKLab tuple (L in 0-1)
+
+    Returns:
+        OKLCh tuple (L in 0-1, C >= 0, H in degrees 0-360)
+    """
+    lightness, a, b = lab
     chroma = math.hypot(a, b)
     hue = math.degrees(math.atan2(b, a)) % 360
     return (lightness, chroma, hue)
